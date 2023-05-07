@@ -21,7 +21,7 @@ PDF Scraper is a Python library for downloading PDF files from a webpage. It pro
 You can install PDF Scraper using pip:
 
 ```sh
-pip install pdf-scraper
+pip install pdf_scraper
 ```
 
 ### Using Poetry
@@ -29,7 +29,7 @@ pip install pdf-scraper
 If you are using Poetry to manage your project, you can install PDF Scraper as a dependency:
 
 ```sh
-poetry add pdf-scraper
+poetry add pdf_scraper
 ```
 If you don't have Poetry installed, you can install it by following the instructions on the <a href="https://python-poetry.org/docs/#installation" target="_new">official Poetry website</a>.
 
