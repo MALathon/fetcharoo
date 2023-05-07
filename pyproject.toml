@@ -1,11 +1,12 @@
 [tool.poetry]
 name = "scraperhero"
-version = "0.1.0"
+version = "0.2.0"
 description = "A Python library for downloading PDF files from a webpage, with support for recursion depth and optional PDF merging."
 authors = ["Mark A. Lifson, Ph.D. <mlifson@gmail.com>"]
 license = "MIT License"
 readme = "README.md"
 packages = [{include = "scraperhero"}]
+exclude = ["tests/*"]
 
 [tool.poetry.dependencies]
 python = ">=3.10"
