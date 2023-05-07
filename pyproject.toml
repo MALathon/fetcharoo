@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "pdf-scraper"
+version = "0.1.0"
+description = "A Python library for downloading PDF files from a webpage, with support for recursion depth and optional PDF merging."
+authors = ["Mark A. Lifson, Ph.D. <mlifson@gmail.com>"]
+license = "MIT License"
+readme = "README.md"
+packages = [{include = "pdf_scraper"}]
+
+[tool.poetry.dependencies]
+python = ">=3.8"
+requests = "^2.30.0"
+pymupdf = "^1.22.2"
+bs4 = "^0.0.1"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.3.1"
+responses = "^0.23.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
