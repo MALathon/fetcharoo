@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "scraperhero"
-version = "0.2.0"
-description = "A Python library for downloading PDF files from a webpage, with support for recursion depth and optional PDF merging."
+name = "fetcharoo"
+version = "0.0.1"
+description = "A Python library for downloading files from a webpage, with support for recursion depth and optional merging."
 authors = ["Mark A. Lifson, Ph.D. <mlifson@gmail.com>"]
 license = "MIT License"
 readme = "README.md"
-packages = [{include = "scraperhero"}]
+packages = [{include = "fetcharoo"}]
 exclude = ["tests/*"]
 
 [tool.poetry.dependencies]

@@ -2,7 +2,7 @@ import unittest
 import os
 import fitz
 from tempfile import TemporaryDirectory
-from scraperhero.pdf_utils import merge_pdfs, save_pdf_to_file
+from fetcharoo.pdf_utils import merge_pdfs, save_pdf_to_file
 
 class TestPdfUtils(unittest.TestCase):
     def create_sample_pdf(self, num_pages=1):

@@ -5,8 +5,8 @@ import logging
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 from typing import List, Set, Optional
-from scraperhero.downloader import download_pdf
-from scraperhero.pdf_utils import merge_pdfs, save_pdf_to_file
+from fetcharoo.downloader import download_pdf
+from fetcharoo.pdf_utils import merge_pdfs, save_pdf_to_file
 
 # Define constants
 DEFAULT_WRITE_DIR = 'output'
@@ -152,7 +152,6 @@ def download_pdfs_from_webpage(url: str, recursion_depth: int = 0, mode: str = D
     """
     # Find PDF links from the webpage
     pdf_links = find_pdfs_from_webpage(url, recursion_depth)
-    print(pdf_links)
 
     # Process the PDFs based on the specified mode
     process_pdfs(pdf_links, write_dir, mode)

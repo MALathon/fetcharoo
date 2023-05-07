@@ -4,9 +4,9 @@ from unittest.mock import patch
 from tempfile import TemporaryDirectory
 import fitz  # PyMuPDF
 import responses
-from scraperhero.scraperhero import find_pdfs_from_webpage, process_pdfs, download_pdfs_from_webpage, is_valid_url
+from fetcharoo.fetcharoo import find_pdfs_from_webpage, process_pdfs, download_pdfs_from_webpage, is_valid_url
 
-class TestScraperHero(unittest.TestCase):
+class Testfetcharoo(unittest.TestCase):
     def setUp(self):
         # Create a small PDF document in memory and use its binary content as the mock content
         pdf_doc = fitz.open()
@@ -18,7 +18,7 @@ class TestScraperHero(unittest.TestCase):
         self.assertTrue(is_valid_url('https://example.com'))
         self.assertFalse(is_valid_url('invalid_url'))
 
-    @patch('scraperhero.scraperhero.download_pdf')
+    @patch('fetcharoo.fetcharoo.download_pdf')
     def test_process_pdfs_merge_mode(self, mock_download_pdf):
         # Mock the download_pdf function to return the mock PDF content
         mock_download_pdf.return_value = self.mock_pdf_content
@@ -35,7 +35,7 @@ class TestScraperHero(unittest.TestCase):
             merged_pdf_path = os.path.join(temp_dir, 'merged.pdf')
             self.assertTrue(os.path.exists(merged_pdf_path))
 
-    @patch('scraperhero.scraperhero.download_pdf')
+    @patch('fetcharoo.fetcharoo.download_pdf')
     def test_process_pdfs_separate_mode(self, mock_download_pdf):
         # Mock the download_pdf function to return the mock PDF content
         mock_download_pdf.return_value = self.mock_pdf_content
@@ -54,8 +54,8 @@ class TestScraperHero(unittest.TestCase):
                 pdf_file_path = os.path.join(temp_dir, pdf_file_name)
                 self.assertTrue(os.path.exists(pdf_file_path))
 
-    @patch('scraperhero.scraperhero.find_pdfs_from_webpage')
-    @patch('scraperhero.scraperhero.process_pdfs')
+    @patch('fetcharoo.fetcharoo.find_pdfs_from_webpage')
+    @patch('fetcharoo.fetcharoo.process_pdfs')
     def test_download_pdfs_from_webpage(self, mock_process_pdfs, mock_find_pdfs_from_webpage):
         # Mock the find_pdfs_from_webpage function to return sample PDF links
         mock_find_pdfs_from_webpage.return_value = ['https://example.com/test1.pdf', 'https://example.com/test2.pdf']

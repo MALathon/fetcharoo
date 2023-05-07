@@ -1,7 +1,7 @@
 import os
 import unittest
 from tempfile import TemporaryDirectory
-from scraperhero.file_utils import check_file_exists, check_pdf_exists
+from fetcharoo.file_utils import check_file_exists, check_pdf_exists
 
 class TestFileUtils(unittest.TestCase):
     def test_check_file_exists(self):
