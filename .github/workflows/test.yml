@@ -1,8 +1,9 @@
-name: Test
+name: PDF Scraper CI
 
 on:
   push:
-    branches: [master]
+    branches:
+      - main
 
 jobs:
   test:
@@ -11,10 +12,10 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Set up Python 3.9
+    - name: Set up Python 3.x
       uses: actions/setup-python@v2
       with:
-        python-version: 3.9
+        python-version: 3.x
 
     - name: Install dependencies
       run: |
@@ -24,4 +25,11 @@ jobs:
 
     - name: Run tests
       run: |
-        poetry run pytest tests/
+        poetry run pytest --cov=pdf_scraper
+
+    - name: Upload coverage report
+      uses: codecov/codecov-action@v2.1.0
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        file: ./coverage.xml
+        flags: unittests
