@@ -11,7 +11,7 @@ ScraperHero is a Python library for downloading PDF files from a webpage. It pro
 
 ## Requirements
 
-- Python 3.6 or higher
+- Python 3.10 or higher
 - Third-party libraries: `requests`, `PyMuPDF`
 
 ## Installation
