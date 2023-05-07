@@ -1,25 +1,36 @@
 name: CI
-on: pull_request
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
-  ci:
+  build:
+    runs-on: ubuntu-latest
+
     strategy:
-      fail-fast: false
       matrix:
-        python-version: ["3.6", "3.7", "3.8", "3.9", "3.10"]
-        poetry-version: ["1.0", "1.1.15"]
-        os: [ubuntu-18.04, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+        python-version: [3.7, 3.8, 3.9]
+
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Set up Poetry
-        uses: warrenseymour/setup-poetry@v1
-        with:
-          poetry-version: ${{ matrix.poetry-version }}
-      - name: Install dependencies
-        run: poetry install
-      - name: Run tests
-        run: poetry run pytest
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install Poetry
+      run: curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | POETRY_HOME=/opt/poetry python
+    - name: Set up dependencies
+      run: |
+        python -m venv .env
+        source .env/bin/activate
+        /opt/poetry/bin/poetry install
+      env:
+        POETRY_VIRTUALENVS_CREATE: false
+    - name: Run tests
+      run: |
+        source .env/bin/activate
+        poetry run pytest tests/
