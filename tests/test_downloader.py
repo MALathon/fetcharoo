@@ -1,7 +1,7 @@
 import unittest
 import requests
 from unittest.mock import patch, MagicMock
-from pdf_scraper.downloader import download_pdf
+from scraperhero.downloader import download_pdf
 
 class TestDownloader(unittest.TestCase):
     @patch('requests.get')

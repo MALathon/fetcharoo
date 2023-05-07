@@ -5,8 +5,8 @@ import logging
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 from typing import List, Set, Optional
-from pdf_scraper.downloader import download_pdf
-from pdf_scraper.pdf_utils import merge_pdfs, save_pdf_to_file
+from scraperhero.downloader import download_pdf
+from scraperhero.pdf_utils import merge_pdfs, save_pdf_to_file
 
 # Define constants
 DEFAULT_WRITE_DIR = 'output'
