@@ -1,13 +1,13 @@
 import unittest
 import os
-import fitz
+import pymupdf
 from tempfile import TemporaryDirectory
 from fetcharoo.pdf_utils import merge_pdfs, save_pdf_to_file
 
 class TestPdfUtils(unittest.TestCase):
     def create_sample_pdf(self, num_pages=1):
         """Create a sample PDF document with the specified number of pages."""
-        pdf_doc = fitz.open()
+        pdf_doc = pymupdf.open()
         for _ in range(num_pages):
             pdf_doc.new_page()
         pdf_content = pdf_doc.write()
@@ -31,7 +31,7 @@ class TestPdfUtils(unittest.TestCase):
     def test_save_pdf_to_file_append_mode(self):
         # Create a sample PDF with 2 pages
         pdf_content = self.create_sample_pdf(num_pages=2)
-        pdf_document = fitz.Document(stream=pdf_content, filetype="pdf")
+        pdf_document = pymupdf.Document(stream=pdf_content, filetype="pdf")
 
         # Use a temporary directory for testing
         with TemporaryDirectory() as temp_dir:
@@ -45,7 +45,7 @@ class TestPdfUtils(unittest.TestCase):
             self.assertTrue(os.path.exists(output_file_path))
 
             # Open the output file and check the page count
-            saved_pdf = fitz.Document(output_file_path)
+            saved_pdf = pymupdf.Document(output_file_path)
             self.assertEqual(saved_pdf.page_count, 2)
 
             # Close the saved PDF document
@@ -54,7 +54,7 @@ class TestPdfUtils(unittest.TestCase):
     def test_save_pdf_to_file_overwrite_mode(self):
         # Create a sample PDF with 2 pages
         pdf_content = self.create_sample_pdf(num_pages=2)
-        pdf_document = fitz.Document(stream=pdf_content, filetype="pdf")
+        pdf_document = pymupdf.Document(stream=pdf_content, filetype="pdf")
 
         # Use a temporary directory for testing
         with TemporaryDirectory() as temp_dir:
@@ -68,7 +68,7 @@ class TestPdfUtils(unittest.TestCase):
             self.assertTrue(os.path.exists(output_file_path))
 
             # Open the output file and check the page count
-            saved_pdf = fitz.Document(output_file_path)
+            saved_pdf = pymupdf.Document(output_file_path)
             self.assertEqual(saved_pdf.page_count, 2)
 
             # Close the saved PDF document
@@ -76,11 +76,11 @@ class TestPdfUtils(unittest.TestCase):
 
             # Save a new PDF with 1 page to the same output file
             new_pdf_content = self.create_sample_pdf(num_pages=1)
-            new_pdf_document = fitz.Document(stream=new_pdf_content, filetype="pdf")
+            new_pdf_document = pymupdf.Document(stream=new_pdf_content, filetype="pdf")
             save_pdf_to_file(new_pdf_document, output_file_path, mode='overwrite')
 
             # Open the output file and check the page count
-            saved_pdf = fitz.Document(output_file_path)
+            saved_pdf = pymupdf.Document(output_file_path)
             self.assertEqual(saved_pdf.page_count, 1)
 
             # Close the saved PDF document
@@ -89,7 +89,7 @@ class TestPdfUtils(unittest.TestCase):
     def test_save_pdf_to_file_unique_mode(self):
         # Create a sample PDF with 2 pages
         pdf_content = self.create_sample_pdf(num_pages=2)
-        pdf_document = fitz.Document(stream=pdf_content, filetype="pdf")
+        pdf_document = pymupdf.Document(stream=pdf_content, filetype="pdf")
         # Use a temporary directory for testing
         with TemporaryDirectory() as temp_dir:
             # Define the output file path
@@ -102,7 +102,7 @@ class TestPdfUtils(unittest.TestCase):
             self.assertTrue(os.path.exists(output_file_path))
 
             # Open the output file and check the page count
-            saved_pdf = fitz.Document(output_file_path)
+            saved_pdf = pymupdf.Document(output_file_path)
             self.assertEqual(saved_pdf.page_count, 2)
 
             # Close the saved PDF document
@@ -110,7 +110,7 @@ class TestPdfUtils(unittest.TestCase):
 
             # Save a new PDF with 1 page to the same output file
             new_pdf_content = self.create_sample_pdf(num_pages=1)
-            new_pdf_document = fitz.Document(stream=new_pdf_content, filetype="pdf")
+            new_pdf_document = pymupdf.Document(stream=new_pdf_content, filetype="pdf")
             save_pdf_to_file(new_pdf_document, output_file_path, mode='unique')
 
             # Check that a new PDF file with a unique name exists
@@ -118,11 +118,11 @@ class TestPdfUtils(unittest.TestCase):
             self.assertTrue(os.path.exists(unique_output_file_path))
 
             # Open the unique output file and check the page count
-            unique_saved_pdf = fitz.Document(unique_output_file_path)
+            unique_saved_pdf = pymupdf.Document(unique_output_file_path)
             self.assertEqual(unique_saved_pdf.page_count, 1)
 
             # Close the unique saved PDF document
             unique_saved_pdf.close()
 
-if __name__ == 'main':
+if __name__ == '__main__':
     unittest.main()
