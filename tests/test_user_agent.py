@@ -19,14 +19,14 @@ class TestDefaultUserAgent:
         """Test that the default user agent identifies the bot properly."""
         default_ua = get_default_user_agent()
         assert "fetcharoo" in default_ua.lower()
-        assert "0.1.0" in default_ua
+        assert "0.2.0" in default_ua
         assert "github.com/MALathon/fetcharoo" in default_ua
 
     def test_default_user_agent_format(self):
         """Test that the default user agent follows the expected format."""
         default_ua = get_default_user_agent()
-        # Format: "fetcharoo/0.1.0 (+https://github.com/MALathon/fetcharoo)"
-        assert default_ua == "fetcharoo/0.1.0 (+https://github.com/MALathon/fetcharoo)"
+        # Format: "fetcharoo/0.2.0 (+https://github.com/MALathon/fetcharoo)"
+        assert default_ua == "fetcharoo/0.2.0 (+https://github.com/MALathon/fetcharoo)"
 
 
 class TestSetDefaultUserAgent:
@@ -75,7 +75,7 @@ class TestFindPdfsUserAgent:
         call_args = mock_get.call_args
         headers = call_args.kwargs.get('headers', {})
         assert 'User-Agent' in headers
-        assert headers['User-Agent'] == "fetcharoo/0.1.0 (+https://github.com/MALathon/fetcharoo)"
+        assert headers['User-Agent'] == "fetcharoo/0.2.0 (+https://github.com/MALathon/fetcharoo)"
 
     @patch('fetcharoo.fetcharoo.requests.get')
     def test_find_pdfs_accepts_custom_user_agent(self, mock_get):
@@ -179,11 +179,11 @@ class TestDownloadPdfsUserAgent:
         # Check that both requests used the default user agent
         for call in mock_find_get.call_args_list:
             headers = call.kwargs.get('headers', {})
-            assert headers['User-Agent'] == "fetcharoo/0.1.0 (+https://github.com/MALathon/fetcharoo)"
+            assert headers['User-Agent'] == "fetcharoo/0.2.0 (+https://github.com/MALathon/fetcharoo)"
 
         for call in mock_download_get.call_args_list:
             headers = call.kwargs.get('headers', {})
-            assert headers['User-Agent'] == "fetcharoo/0.1.0 (+https://github.com/MALathon/fetcharoo)"
+            assert headers['User-Agent'] == "fetcharoo/0.2.0 (+https://github.com/MALathon/fetcharoo)"
 
     @patch('fetcharoo.downloader.requests.get')
     @patch('fetcharoo.fetcharoo.requests.get')
@@ -243,7 +243,7 @@ class TestDownloadPdfUserAgent:
 
         call_args = mock_get.call_args
         headers = call_args.kwargs.get('headers', {})
-        assert headers['User-Agent'] == "fetcharoo/0.1.0 (+https://github.com/MALathon/fetcharoo)"
+        assert headers['User-Agent'] == "fetcharoo/0.2.0 (+https://github.com/MALathon/fetcharoo)"
 
     @patch('fetcharoo.downloader.requests.get')
     def test_download_pdf_accepts_custom_user_agent(self, mock_get):
