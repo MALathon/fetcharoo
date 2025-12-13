@@ -6,7 +6,7 @@ import requests
 import logging
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, unquote
-from typing import List, Set, Optional
+from typing import List, Set, Optional, Union, Dict
 
 from fetcharoo.downloader import download_pdf
 from fetcharoo.pdf_utils import merge_pdfs, save_pdf_to_file
@@ -297,8 +297,9 @@ def download_pdfs_from_webpage(
     write_dir: str = DEFAULT_WRITE_DIR,
     allowed_domains: Optional[Set[str]] = None,
     request_delay: float = DEFAULT_REQUEST_DELAY,
-    timeout: int = DEFAULT_TIMEOUT
-) -> bool:
+    timeout: int = DEFAULT_TIMEOUT,
+    dry_run: bool = False
+) -> Union[bool, Dict[str, Union[List[str], int]]]:
     """
     Download PDFs from a webpage and process them based on the specified mode.
 
@@ -311,9 +312,11 @@ def download_pdfs_from_webpage(
                         If None, only the initial URL's domain is allowed.
         request_delay: Delay in seconds between requests. Defaults to 0.5.
         timeout: Request timeout in seconds. Defaults to 30.
+        dry_run: If True, find and return PDF URLs without downloading them. Defaults to False.
 
     Returns:
-        True if at least one PDF was processed successfully, False otherwise.
+        If dry_run=True: A dict with {"urls": [...], "count": N}
+        If dry_run=False: True if at least one PDF was processed successfully, False otherwise.
     """
     # Find PDF links from the webpage
     pdf_links = find_pdfs_from_webpage(
@@ -323,6 +326,16 @@ def download_pdfs_from_webpage(
         request_delay=request_delay,
         timeout=timeout
     )
+
+    # If dry_run mode, return the URLs without downloading
+    if dry_run:
+        logging.info(f"DRY RUN: Found {len(pdf_links)} PDF(s) that would be downloaded:")
+        for pdf_url in pdf_links:
+            logging.info(f"  - {pdf_url}")
+        return {
+            "urls": pdf_links,
+            "count": len(pdf_links)
+        }
 
     # Process the PDFs based on the specified mode
     return process_pdfs(pdf_links, write_dir, mode, timeout)
