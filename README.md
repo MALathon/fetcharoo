@@ -28,6 +28,12 @@ A Python library for downloading PDF files from webpages with support for recurs
 pip install fetcharoo
 ```
 
+### From GitHub (latest)
+
+```sh
+pip install git+https://github.com/MALathon/fetcharoo.git
+```
+
 ### Using Poetry
 
 ```sh
