@@ -1,0 +1,195 @@
+"""
+Command-line interface for fetcharoo.
+
+This module provides a CLI for downloading PDF files from webpages,
+with support for recursive link following, PDF merging, and various options.
+"""
+
+import argparse
+import sys
+from typing import Optional
+
+from fetcharoo.fetcharoo import (
+    download_pdfs_from_webpage,
+    find_pdfs_from_webpage,
+)
+import fetcharoo.fetcharoo
+
+
+def create_parser() -> argparse.ArgumentParser:
+    """
+    Create and configure the argument parser for the CLI.
+
+    Returns:
+        Configured ArgumentParser instance.
+    """
+    parser = argparse.ArgumentParser(
+        prog='fetcharoo',
+        description='Download PDF files from webpages with optional recursive link following.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Download PDFs from a single page
+  fetcharoo https://example.com
+
+  # Download with recursion depth 2 and merge into one file
+  fetcharoo https://example.com -d 2 -m
+
+  # List PDFs without downloading (dry run)
+  fetcharoo https://example.com --dry-run
+
+  # Download to custom directory with custom delay
+  fetcharoo https://example.com -o my_pdfs --delay 1.0
+        """
+    )
+
+    # Positional argument
+    parser.add_argument(
+        'url',
+        type=str,
+        help='URL of the webpage to search for PDFs'
+    )
+
+    # Optional arguments
+    parser.add_argument(
+        '-o', '--output',
+        type=str,
+        default='output',
+        metavar='DIR',
+        help='output directory for downloaded PDFs (default: output)'
+    )
+
+    parser.add_argument(
+        '-d', '--depth',
+        type=int,
+        default=0,
+        metavar='N',
+        help='recursion depth for following links (default: 0)'
+    )
+
+    parser.add_argument(
+        '-m', '--merge',
+        action='store_true',
+        help='merge all PDFs into a single file'
+    )
+
+    parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='list PDFs that would be downloaded without actually downloading them'
+    )
+
+    parser.add_argument(
+        '--delay',
+        type=float,
+        default=0.5,
+        metavar='SECONDS',
+        help='delay between requests in seconds (default: 0.5)'
+    )
+
+    parser.add_argument(
+        '--timeout',
+        type=int,
+        default=30,
+        metavar='SECONDS',
+        help='request timeout in seconds (default: 30)'
+    )
+
+    parser.add_argument(
+        '--user-agent',
+        type=str,
+        metavar='STRING',
+        help='custom user agent string'
+    )
+
+    parser.add_argument(
+        '--respect-robots',
+        action='store_true',
+        help='respect robots.txt (currently informational)'
+    )
+
+    return parser
+
+
+def main(argv: Optional[list] = None) -> int:
+    """
+    Main entry point for the CLI.
+
+    Args:
+        argv: Command-line arguments (defaults to sys.argv if None).
+
+    Returns:
+        Exit code (0 for success, 1 for failure).
+    """
+    parser = create_parser()
+
+    # Parse arguments
+    args = parser.parse_args(argv)
+
+    # Set custom user agent if provided
+    if args.user_agent:
+        fetcharoo.fetcharoo.USER_AGENT = args.user_agent
+
+    # Display warning for --respect-robots (not yet implemented)
+    if args.respect_robots:
+        print("Note: --respect-robots flag is currently informational only.")
+
+    # Determine mode based on merge flag
+    mode = 'merge' if args.merge else 'separate'
+
+    try:
+        # Handle dry-run mode
+        if args.dry_run:
+            print(f"Searching for PDFs at: {args.url}")
+            print(f"Recursion depth: {args.depth}")
+            print()
+
+            pdf_links = find_pdfs_from_webpage(
+                args.url,
+                recursion_depth=args.depth,
+                request_delay=args.delay,
+                timeout=args.timeout
+            )
+
+            if pdf_links:
+                print(f"Found {len(pdf_links)} PDF(s):")
+                for i, link in enumerate(pdf_links, 1):
+                    print(f"  {i}. {link}")
+            else:
+                print("No PDFs found.")
+
+            return 0
+
+        # Normal download mode
+        print(f"Downloading PDFs from: {args.url}")
+        print(f"Output directory: {args.output}")
+        print(f"Recursion depth: {args.depth}")
+        print(f"Mode: {mode}")
+        print()
+
+        success = download_pdfs_from_webpage(
+            args.url,
+            recursion_depth=args.depth,
+            mode=mode,
+            write_dir=args.output,
+            request_delay=args.delay,
+            timeout=args.timeout
+        )
+
+        if success:
+            print(f"\nSuccessfully downloaded PDFs to: {args.output}")
+            return 0
+        else:
+            print("\nNo PDFs were downloaded.")
+            return 1
+
+    except KeyboardInterrupt:
+        print("\n\nOperation cancelled by user.")
+        return 1
+    except Exception as e:
+        print(f"\nError: {e}", file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())
