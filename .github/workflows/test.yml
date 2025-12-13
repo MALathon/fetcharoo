@@ -1,66 +1,69 @@
 # This workflow will install Python dependencies, run tests and lint with a variety of Python versions
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
-name: Python package
+name: Tests
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["master", "main"]
   pull_request:
-    branches: [ "master" ]
+    branches: ["master", "main"]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v3
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
-        #----------------------------------------------
-        #  -----  install & configure poetry  -----
-        #----------------------------------------------
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
+          version: latest
           virtualenvs-create: true
           virtualenvs-in-project: true
           installer-parallel: true
 
-        #----------------------------------------------
-        #       load cached venv if cache exists
-        #----------------------------------------------
       - name: Load cached venv
         id: cached-poetry-dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+          key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            venv-${{ runner.os }}-${{ matrix.python-version }}-
 
-        #----------------------------------------------
-        # install dependencies if cache does not exist
-        #----------------------------------------------
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: poetry install --no-interaction --no-root
 
-        #----------------------------------------------
-        # install your root project, if required
-        #----------------------------------------------
       - name: Install project
         run: poetry install --no-interaction
 
-        #----------------------------------------------
-        #              run test suite
-        #----------------------------------------------
-      - name: Run tests
+      - name: Run tests with coverage
         run: |
-          source .venv/bin/activate
-          pytest tests/
+          poetry run pytest tests/ -v --tb=short
+
+      - name: Run coverage (Python 3.12 only)
+        if: matrix.python-version == '3.12'
+        run: |
+          poetry run coverage run -m pytest tests/
+          poetry run coverage report -m
+          poetry run coverage xml
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+        continue-on-error: true
