@@ -112,7 +112,7 @@ Examples:
     parser.add_argument(
         '--progress',
         action='store_true',
-        help='show progress bars during download (requires tqdm)'
+        help='show progress bars during download'
     )
 
     # Filtering options

@@ -29,15 +29,12 @@ python = ">=3.10,<4.0"
 requests = "^2.32.3"
 pymupdf = "^1.25.0"
 beautifulsoup4 = "^4.12.3"
-tqdm = {version = "^4.66", optional = true}
+tqdm = "^4.66"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
 responses = "^0.25.3"
 coverage = "^7.6.0"
-
-[tool.poetry.extras]
-progress = ["tqdm"]
 
 [tool.poetry.scripts]
 fetcharoo = "fetcharoo.cli:main"

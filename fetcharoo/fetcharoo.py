@@ -5,6 +5,7 @@ import pymupdf
 import requests
 import logging
 from bs4 import BeautifulSoup
+from tqdm import tqdm
 from urllib.parse import urljoin, urlparse, unquote
 from urllib.robotparser import RobotFileParser
 from typing import List, Set, Optional, Union, Dict
@@ -231,7 +232,7 @@ def find_pdfs_from_webpage(
         timeout: Request timeout in seconds. Defaults to 30.
         respect_robots: Whether to respect robots.txt rules. Defaults to False.
         user_agent: Custom User-Agent string. If None, uses the default.
-        show_progress: Whether to show progress bars (requires tqdm). Defaults to False.
+        show_progress: Whether to show progress bars. Defaults to False.
 
     Returns:
         A list of PDF URLs found on the webpage.
@@ -346,7 +347,7 @@ def process_pdfs(
         mode: The processing mode, either 'separate' or 'merge'. Defaults to DEFAULT_MODE.
         timeout: The timeout for downloading PDFs in seconds. Defaults to 30.
         user_agent: Custom User-Agent string. If None, uses the default.
-        show_progress: Whether to show progress bars (requires tqdm). Defaults to False.
+        show_progress: Whether to show progress bars. Defaults to False.
         filter_config: Optional FilterConfig to filter PDFs. If None, no filtering is applied.
 
     Returns:
@@ -386,24 +387,11 @@ def process_pdfs(
     if user_agent is None:
         user_agent = get_default_user_agent()
 
-    # Try to import tqdm for progress bar
-    tqdm_available = False
-    if show_progress:
-        try:
-            from tqdm import tqdm
-            tqdm_available = True
-        except ImportError:
-            logging.info("tqdm not installed, using logging for progress instead")
-
     # Download PDF contents with optional progress bar
-    if show_progress and tqdm_available:
+    if show_progress:
         pdf_contents = [download_pdf(pdf_link, timeout, user_agent=user_agent) for pdf_link in tqdm(pdf_links, desc="Downloading PDFs")]
     else:
-        if show_progress:
-            logging.info(f"Downloading {len(pdf_links)} PDFs...")
         pdf_contents = [download_pdf(pdf_link, timeout, user_agent=user_agent) for pdf_link in pdf_links]
-        if show_progress:
-            logging.info(f"Downloaded {len(pdf_links)} PDFs")
 
     pdf_contents_valid = [(content, link) for content, link in zip(pdf_contents, pdf_links)
                           if content is not None and content.startswith(b'%PDF')]
@@ -494,7 +482,7 @@ def download_pdfs_from_webpage(
         respect_robots: Whether to respect robots.txt rules. Defaults to False.
         user_agent: Custom User-Agent string. If None, uses the default.
         dry_run: If True, find and return PDF URLs without downloading them. Defaults to False.
-        show_progress: Whether to show progress bars (requires tqdm). Defaults to False.
+        show_progress: Whether to show progress bars. Defaults to False.
         filter_config: Optional FilterConfig to filter PDFs. If None, no filtering is applied.
 
     Returns:

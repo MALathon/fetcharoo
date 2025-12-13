@@ -15,7 +15,7 @@ A Python library for downloading PDF files from webpages with support for recurs
 - **robots.txt compliance** for ethical web crawling
 - **Custom User-Agent** support
 - **Dry-run mode** to preview downloads
-- **Progress bars** with optional tqdm integration
+- **Progress bars** with tqdm integration
 - **PDF filtering** by filename, URL patterns, and size
 - **Security hardening**: Domain restriction, path traversal protection, rate limiting
 - Configurable timeouts and request delays
@@ -23,8 +23,7 @@ A Python library for downloading PDF files from webpages with support for recurs
 ## Requirements
 
 - Python 3.10 or higher
-- Dependencies: `requests`, `pymupdf`, `beautifulsoup4`
-- Optional: `tqdm` for progress bars
+- Dependencies: `requests`, `pymupdf`, `beautifulsoup4`, `tqdm`
 
 ## Installation
 
@@ -32,12 +31,6 @@ A Python library for downloading PDF files from webpages with support for recurs
 
 ```sh
 pip install fetcharoo
-```
-
-### With progress bar support
-
-```sh
-pip install fetcharoo[progress]
 ```
 
 ### From GitHub (latest)
@@ -93,7 +86,7 @@ fetcharoo https://example.com --include "report*.pdf" --exclude "*draft*"
 | `--timeout SECONDS` | Request timeout (default: 30) |
 | `--user-agent STRING` | Custom User-Agent string |
 | `--respect-robots` | Respect robots.txt rules |
-| `--progress` | Show progress bars (requires tqdm) |
+| `--progress` | Show progress bars |
 | `--include PATTERN` | Include PDFs matching pattern |
 | `--exclude PATTERN` | Exclude PDFs matching pattern |
 | `--min-size BYTES` | Minimum PDF size |
@@ -167,7 +160,7 @@ for url in result['urls']:
 ```python
 from fetcharoo import download_pdfs_from_webpage
 
-# Show progress during download (requires tqdm)
+# Show progress during download
 download_pdfs_from_webpage(
     url='https://example.com',
     recursion_depth=2,
@@ -262,7 +255,7 @@ Main function to find and download PDFs from a webpage.
 | `respect_robots` | bool | False | Whether to respect robots.txt |
 | `user_agent` | str | None | Custom User-Agent (uses default if None) |
 | `dry_run` | bool | False | Preview URLs without downloading |
-| `show_progress` | bool | False | Show progress bars (requires tqdm) |
+| `show_progress` | bool | False | Show progress bars |
 | `filter_config` | FilterConfig | None | PDF filtering configuration |
 
 ### `find_pdfs_from_webpage()`

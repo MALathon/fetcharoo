@@ -44,10 +44,10 @@ jobs:
 
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --no-interaction --no-root --extras progress
+        run: poetry install --no-interaction --no-root
 
       - name: Install project
-        run: poetry install --no-interaction --extras progress
+        run: poetry install --no-interaction
 
       - name: Run tests with coverage
         run: |
