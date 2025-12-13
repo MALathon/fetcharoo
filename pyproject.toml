@@ -1,11 +1,27 @@
 [tool.poetry]
 name = "fetcharoo"
-version = "0.0.1"
-description = "A Python library for downloading files from a webpage, with support for recursion depth and optional merging."
+version = "0.1.0"
+description = "A Python library for downloading PDF files from webpages, with support for recursive link following and PDF merging."
 authors = ["Mark A. Lifson, Ph.D. <mlifson@gmail.com>"]
-license = "MIT License"
+license = "MIT"
 readme = "README.md"
+repository = "https://github.com/MALathon/fetcharoo"
+keywords = ["pdf", "download", "scraper", "web", "merge"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 packages = [{include = "fetcharoo"}]
+include = ["fetcharoo/py.typed"]
 exclude = ["tests/*"]
 
 [tool.poetry.dependencies]

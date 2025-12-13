@@ -1,12 +1,12 @@
-import fitz
+import pymupdf
 import logging
 import os
 
-def merge_pdfs(pdf_contents) -> fitz.Document:
+def merge_pdfs(pdf_contents) -> pymupdf.Document:
     """Merge multiple PDFs into a single document and return the merged document."""
     # Create a new empty PDF document
-    fitz.TOOLS.mupdf_warnings()  # empty the problem message container
-    merged_pdf = fitz.Document()
+    pymupdf.TOOLS.mupdf_warnings()  # empty the problem message container
+    merged_pdf = pymupdf.Document()
 
     for pdf_content in pdf_contents:
         # Check if the PDF content is valid
@@ -15,7 +15,7 @@ def merge_pdfs(pdf_contents) -> fitz.Document:
             continue
         try:
             # Load the PDF content into a PyMuPDF document
-            pdf_document = fitz.Document(stream=pdf_content, filetype="pdf")
+            pdf_document = pymupdf.Document(stream=pdf_content, filetype="pdf")
             # Append the pages of the current PDF document to the merged PDF
             merged_pdf.insert_pdf(pdf_document)
             # Close the current PDF document
@@ -30,7 +30,7 @@ def save_pdf_to_file(pdf_document, output_file_path, mode='append') -> None:
     """Save a PDF document to the specified file."""
     # If mode is 'append' and the output file already exists and is not empty, insert its pages into the new PDF
     if mode == 'append' and os.path.exists(output_file_path) and os.path.getsize(output_file_path) > 0:
-        existing_pdf = fitz.Document(output_file_path)
+        existing_pdf = pymupdf.Document(output_file_path)
         pdf_document.insert_pdf(existing_pdf)
         existing_pdf.close()
 
