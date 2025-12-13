@@ -10,6 +10,8 @@ from fetcharoo.fetcharoo import (
     find_pdfs_from_webpage,
     process_pdfs,
     is_valid_url,
+    is_safe_domain,
+    sanitize_filename,
 )
 from fetcharoo.pdf_utils import merge_pdfs, save_pdf_to_file
 from fetcharoo.downloader import download_pdf
@@ -29,8 +31,10 @@ __all__ = [
     # File utilities
     "check_file_exists",
     "check_pdf_exists",
-    # Validation
+    # Validation & Security
     "is_valid_url",
+    "is_safe_domain",
+    "sanitize_filename",
     # Version
     "__version__",
 ]
