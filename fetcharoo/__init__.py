@@ -19,6 +19,14 @@ from fetcharoo.fetcharoo import (
 from fetcharoo.pdf_utils import merge_pdfs, save_pdf_to_file
 from fetcharoo.downloader import download_pdf
 from fetcharoo.file_utils import check_file_exists, check_pdf_exists
+from fetcharoo.filtering import (
+    FilterConfig,
+    matches_filename_pattern,
+    matches_size_limits,
+    matches_url_pattern,
+    apply_filters,
+    should_download_pdf,
+)
 
 __version__ = "0.1.0"
 
@@ -42,6 +50,13 @@ __all__ = [
     # User-Agent customization
     "set_default_user_agent",
     "get_default_user_agent",
+    # Filtering
+    "FilterConfig",
+    "matches_filename_pattern",
+    "matches_size_limits",
+    "matches_url_pattern",
+    "apply_filters",
+    "should_download_pdf",
     # Version
     "__version__",
 ]
