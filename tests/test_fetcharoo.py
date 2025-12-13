@@ -2,14 +2,14 @@ import os
 import unittest
 from unittest.mock import patch
 from tempfile import TemporaryDirectory
-import fitz  # PyMuPDF
+import pymupdf
 import responses
 from fetcharoo.fetcharoo import find_pdfs_from_webpage, process_pdfs, download_pdfs_from_webpage, is_valid_url
 
 class Testfetcharoo(unittest.TestCase):
     def setUp(self):
         # Create a small PDF document in memory and use its binary content as the mock content
-        pdf_doc = fitz.open()
+        pdf_doc = pymupdf.open()
         pdf_doc.new_page()
         self.mock_pdf_content = pdf_doc.write()  # Use the binary content directly
         pdf_doc.close()
