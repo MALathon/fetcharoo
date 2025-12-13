@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "fetcharoo"
-version = "0.1.0"
+version = "0.2.0"
 description = "A Python library for downloading PDF files from webpages, with support for recursive link following and PDF merging."
 authors = ["Mark A. Lifson, Ph.D. <mlifson@gmail.com>"]
 license = "MIT"

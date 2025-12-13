@@ -22,7 +22,7 @@ DEFAULT_REQUEST_DELAY = 0.5  # seconds between requests to avoid hammering serve
 MAX_RECURSION_DEPTH = 5  # safety limit
 
 # Default User-Agent string - identifies the bot properly for site operators
-DEFAULT_USER_AGENT = 'fetcharoo/0.1.0 (+https://github.com/MALathon/fetcharoo)'
+DEFAULT_USER_AGENT = 'fetcharoo/0.2.0 (+https://github.com/MALathon/fetcharoo)'
 
 # Module-level variable to track the current default user agent
 _default_user_agent = DEFAULT_USER_AGENT
