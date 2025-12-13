@@ -132,10 +132,11 @@ class TestCLI(unittest.TestCase):
         test_args = ['fetcharoo', 'https://example.com', '--user-agent', 'CustomBot/1.0']
         with patch.object(sys, 'argv', test_args):
             with patch('fetcharoo.cli.download_pdfs_from_webpage') as mock_download:
-                with patch('fetcharoo.fetcharoo.USER_AGENT', 'CustomBot/1.0'):
+                with patch('fetcharoo.cli.set_default_user_agent') as mock_set_ua:
                     mock_download.return_value = True
                     self.cli.main()
-                    # Just verify it runs without error
+                    # Verify set_default_user_agent was called with the custom agent
+                    mock_set_ua.assert_called_once_with('CustomBot/1.0')
                     mock_download.assert_called_once()
 
     def test_cli_respect_robots_flag(self):

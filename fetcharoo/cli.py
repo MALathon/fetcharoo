@@ -12,8 +12,9 @@ from typing import Optional
 from fetcharoo.fetcharoo import (
     download_pdfs_from_webpage,
     find_pdfs_from_webpage,
+    set_default_user_agent,
 )
-import fetcharoo.fetcharoo
+from fetcharoo.filtering import FilterConfig
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -105,7 +106,44 @@ Examples:
     parser.add_argument(
         '--respect-robots',
         action='store_true',
-        help='respect robots.txt (currently informational)'
+        help='respect robots.txt rules when crawling'
+    )
+
+    parser.add_argument(
+        '--progress',
+        action='store_true',
+        help='show progress bars during download (requires tqdm)'
+    )
+
+    # Filtering options
+    parser.add_argument(
+        '--include',
+        type=str,
+        action='append',
+        metavar='PATTERN',
+        help='include PDFs matching filename pattern (can be used multiple times)'
+    )
+
+    parser.add_argument(
+        '--exclude',
+        type=str,
+        action='append',
+        metavar='PATTERN',
+        help='exclude PDFs matching filename pattern (can be used multiple times)'
+    )
+
+    parser.add_argument(
+        '--min-size',
+        type=int,
+        metavar='BYTES',
+        help='minimum PDF size in bytes'
+    )
+
+    parser.add_argument(
+        '--max-size',
+        type=int,
+        metavar='BYTES',
+        help='maximum PDF size in bytes'
     )
 
     return parser
@@ -128,11 +166,17 @@ def main(argv: Optional[list] = None) -> int:
 
     # Set custom user agent if provided
     if args.user_agent:
-        fetcharoo.fetcharoo.USER_AGENT = args.user_agent
+        set_default_user_agent(args.user_agent)
 
-    # Display warning for --respect-robots (not yet implemented)
-    if args.respect_robots:
-        print("Note: --respect-robots flag is currently informational only.")
+    # Build filter config if any filtering options are provided
+    filter_config = None
+    if args.include or args.exclude or args.min_size or args.max_size:
+        filter_config = FilterConfig(
+            filename_include=args.include or [],
+            filename_exclude=args.exclude or [],
+            min_size=args.min_size,
+            max_size=args.max_size
+        )
 
     # Determine mode based on merge flag
     mode = 'merge' if args.merge else 'separate'
@@ -142,13 +186,18 @@ def main(argv: Optional[list] = None) -> int:
         if args.dry_run:
             print(f"Searching for PDFs at: {args.url}")
             print(f"Recursion depth: {args.depth}")
+            if args.respect_robots:
+                print("Respecting robots.txt rules")
             print()
 
             pdf_links = find_pdfs_from_webpage(
                 args.url,
                 recursion_depth=args.depth,
                 request_delay=args.delay,
-                timeout=args.timeout
+                timeout=args.timeout,
+                respect_robots=args.respect_robots,
+                user_agent=args.user_agent,
+                show_progress=args.progress
             )
 
             if pdf_links:
@@ -165,6 +214,10 @@ def main(argv: Optional[list] = None) -> int:
         print(f"Output directory: {args.output}")
         print(f"Recursion depth: {args.depth}")
         print(f"Mode: {mode}")
+        if args.respect_robots:
+            print("Respecting robots.txt rules")
+        if filter_config:
+            print("Filtering enabled")
         print()
 
         success = download_pdfs_from_webpage(
@@ -173,7 +226,12 @@ def main(argv: Optional[list] = None) -> int:
             mode=mode,
             write_dir=args.output,
             request_delay=args.delay,
-            timeout=args.timeout
+            timeout=args.timeout,
+            respect_robots=args.respect_robots,
+            user_agent=args.user_agent,
+            dry_run=False,
+            show_progress=args.progress,
+            filter_config=filter_config
         )
 
         if success:

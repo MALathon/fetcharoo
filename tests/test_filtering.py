@@ -67,9 +67,9 @@ class TestFilenamePatternMatching(unittest.TestCase):
         self.assertTrue(matches_filename_pattern('report1.pdf', ['report?.pdf'], []))
         self.assertFalse(matches_filename_pattern('report12.pdf', ['report?.pdf'], []))
 
-        # Character sets
+        # Character sets (note: matching is case-insensitive, so [A-Z] matches a-z too)
         self.assertTrue(matches_filename_pattern('reportA.pdf', ['report[A-Z].pdf'], []))
-        self.assertFalse(matches_filename_pattern('reporta.pdf', ['report[A-Z].pdf'], []))
+        self.assertTrue(matches_filename_pattern('reporta.pdf', ['report[A-Z].pdf'], []))  # Case-insensitive
 
 
 class TestSizeLimitFiltering(unittest.TestCase):

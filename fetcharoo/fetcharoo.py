@@ -524,4 +524,12 @@ def download_pdfs_from_webpage(
         }
 
     # Process the PDFs based on the specified mode
-    return process_pdfs(pdf_links, write_dir, mode, timeout, user_agent, show_progress, filter_config)
+    return process_pdfs(
+        pdf_links,
+        write_dir=write_dir,
+        mode=mode,
+        timeout=timeout,
+        user_agent=user_agent,
+        show_progress=show_progress,
+        filter_config=filter_config
+    )
