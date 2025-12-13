@@ -118,7 +118,8 @@ def find_pdfs_from_webpage(
     visited: Optional[Set[str]] = None,
     allowed_domains: Optional[Set[str]] = None,
     request_delay: float = DEFAULT_REQUEST_DELAY,
-    timeout: int = DEFAULT_TIMEOUT
+    timeout: int = DEFAULT_TIMEOUT,
+    show_progress: bool = False
 ) -> List[str]:
     """
     Find and return a list of PDF URLs from a webpage up to a specified recursion depth.
@@ -131,6 +132,7 @@ def find_pdfs_from_webpage(
                         If None, only the initial URL's domain is allowed.
         request_delay: Delay in seconds between requests. Defaults to 0.5.
         timeout: Request timeout in seconds. Defaults to 30.
+        show_progress: Whether to show progress bars (requires tqdm). Defaults to False.
 
     Returns:
         A list of PDF URLs found on the webpage.
@@ -151,6 +153,10 @@ def find_pdfs_from_webpage(
 
     visited.add(url)
     pdf_links = []
+
+    # Log progress if enabled
+    if show_progress:
+        logging.info(f"Finding PDFs from: {url}")
 
     try:
         if not is_valid_url(url):
@@ -199,7 +205,8 @@ def find_pdfs_from_webpage(
                         visited,
                         allowed_domains,
                         request_delay,
-                        timeout
+                        timeout,
+                        show_progress
                     ))
 
     except requests.exceptions.Timeout:
@@ -214,7 +221,8 @@ def process_pdfs(
     pdf_links: List[str],
     write_dir: str = DEFAULT_WRITE_DIR,
     mode: str = DEFAULT_MODE,
-    timeout: int = DEFAULT_TIMEOUT
+    timeout: int = DEFAULT_TIMEOUT,
+    show_progress: bool = False
 ) -> bool:
     """
     Download and process each PDF file based on the specified mode ('separate' or 'merge').
@@ -225,6 +233,7 @@ def process_pdfs(
         write_dir: The directory to write the output PDF files. Defaults to DEFAULT_WRITE_DIR.
         mode: The processing mode, either 'separate' or 'merge'. Defaults to DEFAULT_MODE.
         timeout: The timeout for downloading PDFs in seconds. Defaults to 30.
+        show_progress: Whether to show progress bars (requires tqdm). Defaults to False.
 
     Returns:
         True if at least one PDF was processed successfully, False otherwise.
@@ -243,8 +252,25 @@ def process_pdfs(
     # Ensure the write directory exists
     os.makedirs(write_dir, exist_ok=True)
 
-    # Download PDF contents
-    pdf_contents = [download_pdf(pdf_link, timeout) for pdf_link in pdf_links]
+    # Try to import tqdm for progress bar
+    tqdm_available = False
+    if show_progress:
+        try:
+            from tqdm import tqdm
+            tqdm_available = True
+        except ImportError:
+            logging.info("tqdm not installed, using logging for progress instead")
+
+    # Download PDF contents with optional progress bar
+    if show_progress and tqdm_available:
+        pdf_contents = [download_pdf(pdf_link, timeout) for pdf_link in tqdm(pdf_links, desc="Downloading PDFs")]
+    else:
+        if show_progress:
+            logging.info(f"Downloading {len(pdf_links)} PDFs...")
+        pdf_contents = [download_pdf(pdf_link, timeout) for pdf_link in pdf_links]
+        if show_progress:
+            logging.info(f"Downloaded {len(pdf_links)} PDFs")
+
     pdf_contents_valid = [(content, link) for content, link in zip(pdf_contents, pdf_links)
                           if content is not None and content.startswith(b'%PDF')]
 
@@ -297,7 +323,8 @@ def download_pdfs_from_webpage(
     write_dir: str = DEFAULT_WRITE_DIR,
     allowed_domains: Optional[Set[str]] = None,
     request_delay: float = DEFAULT_REQUEST_DELAY,
-    timeout: int = DEFAULT_TIMEOUT
+    timeout: int = DEFAULT_TIMEOUT,
+    show_progress: bool = False
 ) -> bool:
     """
     Download PDFs from a webpage and process them based on the specified mode.
@@ -311,6 +338,7 @@ def download_pdfs_from_webpage(
                         If None, only the initial URL's domain is allowed.
         request_delay: Delay in seconds between requests. Defaults to 0.5.
         timeout: Request timeout in seconds. Defaults to 30.
+        show_progress: Whether to show progress bars (requires tqdm). Defaults to False.
 
     Returns:
         True if at least one PDF was processed successfully, False otherwise.
@@ -321,8 +349,9 @@ def download_pdfs_from_webpage(
         recursion_depth,
         allowed_domains=allowed_domains,
         request_delay=request_delay,
-        timeout=timeout
+        timeout=timeout,
+        show_progress=show_progress
     )
 
     # Process the PDFs based on the specified mode
-    return process_pdfs(pdf_links, write_dir, mode, timeout)
+    return process_pdfs(pdf_links, write_dir, mode, timeout, show_progress=show_progress)
