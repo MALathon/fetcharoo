@@ -214,7 +214,8 @@ def find_pdfs_from_webpage(
     request_delay: float = DEFAULT_REQUEST_DELAY,
     timeout: int = DEFAULT_TIMEOUT,
     respect_robots: bool = False,
-    user_agent: Optional[str] = None
+    user_agent: Optional[str] = None,
+    show_progress: bool = False
 ) -> List[str]:
     """
     Find and return a list of PDF URLs from a webpage up to a specified recursion depth.
@@ -229,6 +230,7 @@ def find_pdfs_from_webpage(
         timeout: Request timeout in seconds. Defaults to 30.
         respect_robots: Whether to respect robots.txt rules. Defaults to False.
         user_agent: Custom User-Agent string. If None, uses the default.
+        show_progress: Whether to show progress bars (requires tqdm). Defaults to False.
 
     Returns:
         A list of PDF URLs found on the webpage.
@@ -253,6 +255,10 @@ def find_pdfs_from_webpage(
 
     visited.add(url)
     pdf_links = []
+
+    # Log progress if enabled
+    if show_progress:
+        logging.info(f"Finding PDFs from: {url}")
 
     try:
         if not is_valid_url(url):
@@ -308,7 +314,8 @@ def find_pdfs_from_webpage(
                         request_delay,
                         timeout,
                         respect_robots,
-                        user_agent
+                        user_agent,
+                        show_progress
                     ))
 
     except requests.exceptions.Timeout:
@@ -324,7 +331,8 @@ def process_pdfs(
     write_dir: str = DEFAULT_WRITE_DIR,
     mode: str = DEFAULT_MODE,
     timeout: int = DEFAULT_TIMEOUT,
-    user_agent: Optional[str] = None
+    user_agent: Optional[str] = None,
+    show_progress: bool = False
 ) -> bool:
     """
     Download and process each PDF file based on the specified mode ('separate' or 'merge').
@@ -336,6 +344,7 @@ def process_pdfs(
         mode: The processing mode, either 'separate' or 'merge'. Defaults to DEFAULT_MODE.
         timeout: The timeout for downloading PDFs in seconds. Defaults to 30.
         user_agent: Custom User-Agent string. If None, uses the default.
+        show_progress: Whether to show progress bars (requires tqdm). Defaults to False.
 
     Returns:
         True if at least one PDF was processed successfully, False otherwise.
@@ -358,8 +367,25 @@ def process_pdfs(
     if user_agent is None:
         user_agent = get_default_user_agent()
 
-    # Download PDF contents
-    pdf_contents = [download_pdf(pdf_link, timeout, user_agent=user_agent) for pdf_link in pdf_links]
+    # Try to import tqdm for progress bar
+    tqdm_available = False
+    if show_progress:
+        try:
+            from tqdm import tqdm
+            tqdm_available = True
+        except ImportError:
+            logging.info("tqdm not installed, using logging for progress instead")
+
+    # Download PDF contents with optional progress bar
+    if show_progress and tqdm_available:
+        pdf_contents = [download_pdf(pdf_link, timeout, user_agent=user_agent) for pdf_link in tqdm(pdf_links, desc="Downloading PDFs")]
+    else:
+        if show_progress:
+            logging.info(f"Downloading {len(pdf_links)} PDFs...")
+        pdf_contents = [download_pdf(pdf_link, timeout, user_agent=user_agent) for pdf_link in pdf_links]
+        if show_progress:
+            logging.info(f"Downloaded {len(pdf_links)} PDFs")
+
     pdf_contents_valid = [(content, link) for content, link in zip(pdf_contents, pdf_links)
                           if content is not None and content.startswith(b'%PDF')]
 
@@ -415,7 +441,8 @@ def download_pdfs_from_webpage(
     timeout: int = DEFAULT_TIMEOUT,
     respect_robots: bool = False,
     user_agent: Optional[str] = None,
-    dry_run: bool = False
+    dry_run: bool = False,
+    show_progress: bool = False
 ) -> Union[bool, Dict[str, Union[List[str], int]]]:
     """
     Download PDFs from a webpage and process them based on the specified mode.
@@ -432,6 +459,7 @@ def download_pdfs_from_webpage(
         respect_robots: Whether to respect robots.txt rules. Defaults to False.
         user_agent: Custom User-Agent string. If None, uses the default.
         dry_run: If True, find and return PDF URLs without downloading them. Defaults to False.
+        show_progress: Whether to show progress bars (requires tqdm). Defaults to False.
 
     Returns:
         If dry_run=True: A dict with {"urls": [...], "count": N}
@@ -445,7 +473,8 @@ def download_pdfs_from_webpage(
         request_delay=request_delay,
         timeout=timeout,
         respect_robots=respect_robots,
-        user_agent=user_agent
+        user_agent=user_agent,
+        show_progress=show_progress
     )
 
     # If dry_run mode, return the URLs without downloading
@@ -459,4 +488,4 @@ def download_pdfs_from_webpage(
         }
 
     # Process the PDFs based on the specified mode
-    return process_pdfs(pdf_links, write_dir, mode, timeout, user_agent)
+    return process_pdfs(pdf_links, write_dir, mode, timeout, user_agent, show_progress)
