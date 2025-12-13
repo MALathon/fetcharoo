@@ -6,10 +6,12 @@ import requests
 import logging
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, unquote
-from typing import List, Set, Optional
+from urllib.robotparser import RobotFileParser
+from typing import List, Set, Optional, Union, Dict
 
 from fetcharoo.downloader import download_pdf
 from fetcharoo.pdf_utils import merge_pdfs, save_pdf_to_file
+from fetcharoo.filtering import FilterConfig, should_download_pdf
 
 # Define constants
 DEFAULT_WRITE_DIR = 'output'
@@ -18,11 +20,38 @@ DEFAULT_TIMEOUT = 30
 DEFAULT_REQUEST_DELAY = 0.5  # seconds between requests to avoid hammering servers
 MAX_RECURSION_DEPTH = 5  # safety limit
 
-# Modern User-Agent string
-USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+# Default User-Agent string - identifies the bot properly for site operators
+DEFAULT_USER_AGENT = 'fetcharoo/0.1.0 (+https://github.com/MALathon/fetcharoo)'
+
+# Module-level variable to track the current default user agent
+_default_user_agent = DEFAULT_USER_AGENT
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
+
+# Cache for robots.txt parsers per domain
+_robots_cache: Dict[str, RobotFileParser] = {}
+
+
+def set_default_user_agent(agent_string: str) -> None:
+    """
+    Set the default User-Agent string for all HTTP requests.
+
+    Args:
+        agent_string: The User-Agent string to use as default.
+    """
+    global _default_user_agent
+    _default_user_agent = agent_string
+
+
+def get_default_user_agent() -> str:
+    """
+    Get the current default User-Agent string.
+
+    Returns:
+        The current default User-Agent string.
+    """
+    return _default_user_agent
 
 
 def is_valid_url(url: str) -> bool:
@@ -112,13 +141,82 @@ def sanitize_filename(filename: str) -> str:
     return filename
 
 
+def check_robots_txt(url: str, user_agent: str = 'fetcharoo-bot') -> bool:
+    """
+    Check if crawling a URL is allowed according to robots.txt.
+
+    This function fetches and parses the robots.txt file for the domain
+    and checks if the given URL can be fetched by the specified user agent.
+    Results are cached per domain to avoid repeated fetches.
+
+    Args:
+        url: The URL to check.
+        user_agent: The user agent string to check permissions for. Defaults to 'fetcharoo-bot'.
+
+    Returns:
+        True if crawling is allowed, False if disallowed.
+        Returns True if robots.txt is missing or cannot be fetched (permissive default).
+    """
+    try:
+        parsed_url = urlparse(url)
+        domain = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        robots_url = f"{domain}/robots.txt"
+
+        # Check if we have a cached parser for this domain
+        if domain in _robots_cache:
+            rp = _robots_cache[domain]
+        else:
+            # Create a new RobotFileParser
+            rp = RobotFileParser()
+            rp.set_url(robots_url)
+
+            try:
+                # Fetch robots.txt using requests library
+                headers = {'User-Agent': user_agent}
+                response = requests.get(robots_url, headers=headers, timeout=10)
+
+                if response.status_code == 200:
+                    # Parse the robots.txt content
+                    robots_content = response.text.splitlines()
+                    rp.parse(robots_content)
+                else:
+                    # If robots.txt doesn't exist (404 or other error), allow everything
+                    logging.debug(f"robots.txt returned status {response.status_code} for {domain}")
+                    rp.parse([])
+
+                # Cache the parser
+                _robots_cache[domain] = rp
+
+            except requests.exceptions.RequestException as e:
+                # If we can't fetch robots.txt, assume it's allowed (permissive default)
+                logging.debug(f"Could not fetch robots.txt for {domain}: {e}")
+                # Cache a permissive parser
+                rp = RobotFileParser()
+                rp.set_url(robots_url)
+                # An empty robots.txt allows everything
+                rp.parse([])
+                _robots_cache[domain] = rp
+
+        # Check if the URL can be fetched
+        can_fetch = rp.can_fetch(user_agent, url)
+        return can_fetch
+
+    except Exception as e:
+        # On any error, default to allowing (permissive)
+        logging.debug(f"Error checking robots.txt for {url}: {e}")
+        return True
+
+
 def find_pdfs_from_webpage(
     url: str,
     recursion_depth: int = 0,
     visited: Optional[Set[str]] = None,
     allowed_domains: Optional[Set[str]] = None,
     request_delay: float = DEFAULT_REQUEST_DELAY,
-    timeout: int = DEFAULT_TIMEOUT
+    timeout: int = DEFAULT_TIMEOUT,
+    respect_robots: bool = False,
+    user_agent: Optional[str] = None,
+    show_progress: bool = False
 ) -> List[str]:
     """
     Find and return a list of PDF URLs from a webpage up to a specified recursion depth.
@@ -131,6 +229,9 @@ def find_pdfs_from_webpage(
                         If None, only the initial URL's domain is allowed.
         request_delay: Delay in seconds between requests. Defaults to 0.5.
         timeout: Request timeout in seconds. Defaults to 30.
+        respect_robots: Whether to respect robots.txt rules. Defaults to False.
+        user_agent: Custom User-Agent string. If None, uses the default.
+        show_progress: Whether to show progress bars (requires tqdm). Defaults to False.
 
     Returns:
         A list of PDF URLs found on the webpage.
@@ -149,8 +250,16 @@ def find_pdfs_from_webpage(
         base_domain = parsed_base.netloc.lower().split(':')[0]
         allowed_domains = {base_domain}
 
+    # Use custom user agent or fall back to default
+    if user_agent is None:
+        user_agent = get_default_user_agent()
+
     visited.add(url)
     pdf_links = []
+
+    # Log progress if enabled
+    if show_progress:
+        logging.info(f"Finding PDFs from: {url}")
 
     try:
         if not is_valid_url(url):
@@ -162,7 +271,7 @@ def find_pdfs_from_webpage(
             return pdf_links
 
         # Fetch the webpage content with timeout
-        headers = {'User-Agent': USER_AGENT}
+        headers = {'User-Agent': user_agent}
         response = requests.get(url, headers=headers, timeout=timeout)
         response.raise_for_status()
 
@@ -181,6 +290,11 @@ def find_pdfs_from_webpage(
                 continue
 
             if link.lower().endswith('.pdf'):
+                # Check robots.txt compliance if enabled
+                if respect_robots and not check_robots_txt(link, user_agent):
+                    logging.warning(f"URL disallowed by robots.txt: {link}")
+                    continue
+
                 if link not in pdf_links:  # Avoid duplicates
                     pdf_links.append(link)
             elif recursion_depth > 0:
@@ -199,7 +313,10 @@ def find_pdfs_from_webpage(
                         visited,
                         allowed_domains,
                         request_delay,
-                        timeout
+                        timeout,
+                        respect_robots,
+                        user_agent,
+                        show_progress
                     ))
 
     except requests.exceptions.Timeout:
@@ -214,7 +331,10 @@ def process_pdfs(
     pdf_links: List[str],
     write_dir: str = DEFAULT_WRITE_DIR,
     mode: str = DEFAULT_MODE,
-    timeout: int = DEFAULT_TIMEOUT
+    timeout: int = DEFAULT_TIMEOUT,
+    user_agent: Optional[str] = None,
+    show_progress: bool = False,
+    filter_config: Optional[FilterConfig] = None
 ) -> bool:
     """
     Download and process each PDF file based on the specified mode ('separate' or 'merge').
@@ -225,12 +345,31 @@ def process_pdfs(
         write_dir: The directory to write the output PDF files. Defaults to DEFAULT_WRITE_DIR.
         mode: The processing mode, either 'separate' or 'merge'. Defaults to DEFAULT_MODE.
         timeout: The timeout for downloading PDFs in seconds. Defaults to 30.
+        user_agent: Custom User-Agent string. If None, uses the default.
+        show_progress: Whether to show progress bars (requires tqdm). Defaults to False.
+        filter_config: Optional FilterConfig to filter PDFs. If None, no filtering is applied.
 
     Returns:
         True if at least one PDF was processed successfully, False otherwise.
     """
     if not pdf_links:
         return False
+
+    # Apply filtering if filter_config is provided
+    if filter_config is not None:
+        filtered_links = []
+        for pdf_link in pdf_links:
+            # For now, we don't have size information until we download
+            # So we only apply filename and URL filters here
+            if should_download_pdf(pdf_link, size_bytes=None, filter_config=filter_config):
+                filtered_links.append(pdf_link)
+            else:
+                logging.info(f"Filtered out PDF (filename/URL): {pdf_link}")
+        pdf_links = filtered_links
+
+        if not pdf_links:
+            logging.warning("All PDFs were filtered out.")
+            return False
 
     # Validate mode
     if mode not in ('separate', 'merge'):
@@ -243,14 +382,50 @@ def process_pdfs(
     # Ensure the write directory exists
     os.makedirs(write_dir, exist_ok=True)
 
-    # Download PDF contents
-    pdf_contents = [download_pdf(pdf_link, timeout) for pdf_link in pdf_links]
+    # Use custom user agent or fall back to default
+    if user_agent is None:
+        user_agent = get_default_user_agent()
+
+    # Try to import tqdm for progress bar
+    tqdm_available = False
+    if show_progress:
+        try:
+            from tqdm import tqdm
+            tqdm_available = True
+        except ImportError:
+            logging.info("tqdm not installed, using logging for progress instead")
+
+    # Download PDF contents with optional progress bar
+    if show_progress and tqdm_available:
+        pdf_contents = [download_pdf(pdf_link, timeout, user_agent=user_agent) for pdf_link in tqdm(pdf_links, desc="Downloading PDFs")]
+    else:
+        if show_progress:
+            logging.info(f"Downloading {len(pdf_links)} PDFs...")
+        pdf_contents = [download_pdf(pdf_link, timeout, user_agent=user_agent) for pdf_link in pdf_links]
+        if show_progress:
+            logging.info(f"Downloaded {len(pdf_links)} PDFs")
+
     pdf_contents_valid = [(content, link) for content, link in zip(pdf_contents, pdf_links)
                           if content is not None and content.startswith(b'%PDF')]
 
     if not pdf_contents_valid:
         logging.warning("No valid PDF content found.")
         return False
+
+    # Apply size filtering if filter_config is provided
+    if filter_config is not None and (filter_config.min_size is not None or filter_config.max_size is not None):
+        size_filtered = []
+        for content, link in pdf_contents_valid:
+            size_bytes = len(content)
+            if should_download_pdf(link, size_bytes=size_bytes, filter_config=filter_config):
+                size_filtered.append((content, link))
+            else:
+                logging.info(f"Filtered out PDF (size: {size_bytes} bytes): {link}")
+        pdf_contents_valid = size_filtered
+
+        if not pdf_contents_valid:
+            logging.warning("All PDFs were filtered out by size limits.")
+            return False
 
     success = False
     try:
@@ -297,8 +472,13 @@ def download_pdfs_from_webpage(
     write_dir: str = DEFAULT_WRITE_DIR,
     allowed_domains: Optional[Set[str]] = None,
     request_delay: float = DEFAULT_REQUEST_DELAY,
-    timeout: int = DEFAULT_TIMEOUT
-) -> bool:
+    timeout: int = DEFAULT_TIMEOUT,
+    respect_robots: bool = False,
+    user_agent: Optional[str] = None,
+    dry_run: bool = False,
+    show_progress: bool = False,
+    filter_config: Optional[FilterConfig] = None
+) -> Union[bool, Dict[str, Union[List[str], int]]]:
     """
     Download PDFs from a webpage and process them based on the specified mode.
 
@@ -311,9 +491,15 @@ def download_pdfs_from_webpage(
                         If None, only the initial URL's domain is allowed.
         request_delay: Delay in seconds between requests. Defaults to 0.5.
         timeout: Request timeout in seconds. Defaults to 30.
+        respect_robots: Whether to respect robots.txt rules. Defaults to False.
+        user_agent: Custom User-Agent string. If None, uses the default.
+        dry_run: If True, find and return PDF URLs without downloading them. Defaults to False.
+        show_progress: Whether to show progress bars (requires tqdm). Defaults to False.
+        filter_config: Optional FilterConfig to filter PDFs. If None, no filtering is applied.
 
     Returns:
-        True if at least one PDF was processed successfully, False otherwise.
+        If dry_run=True: A dict with {"urls": [...], "count": N}
+        If dry_run=False: True if at least one PDF was processed successfully, False otherwise.
     """
     # Find PDF links from the webpage
     pdf_links = find_pdfs_from_webpage(
@@ -321,8 +507,39 @@ def download_pdfs_from_webpage(
         recursion_depth,
         allowed_domains=allowed_domains,
         request_delay=request_delay,
-        timeout=timeout
+        timeout=timeout,
+        respect_robots=respect_robots,
+        user_agent=user_agent,
+        show_progress=show_progress
     )
 
+    # If dry_run mode, return the URLs without downloading
+    if dry_run:
+        # Apply filename/URL filtering if filter_config is provided
+        if filter_config is not None:
+            filtered_links = []
+            for pdf_link in pdf_links:
+                if should_download_pdf(pdf_link, size_bytes=None, filter_config=filter_config):
+                    filtered_links.append(pdf_link)
+                else:
+                    logging.info(f"DRY RUN: Filtered out PDF: {pdf_link}")
+            pdf_links = filtered_links
+
+        logging.info(f"DRY RUN: Found {len(pdf_links)} PDF(s) that would be downloaded:")
+        for pdf_url in pdf_links:
+            logging.info(f"  - {pdf_url}")
+        return {
+            "urls": pdf_links,
+            "count": len(pdf_links)
+        }
+
     # Process the PDFs based on the specified mode
-    return process_pdfs(pdf_links, write_dir, mode, timeout)
+    return process_pdfs(
+        pdf_links,
+        write_dir=write_dir,
+        mode=mode,
+        timeout=timeout,
+        user_agent=user_agent,
+        show_progress=show_progress,
+        filter_config=filter_config
+    )
