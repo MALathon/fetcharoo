@@ -1,5 +1,5 @@
 import os
-import fitz
+import pymupdf
 import requests
 import logging
 from bs4 import BeautifulSoup
@@ -131,7 +131,7 @@ def process_pdfs(pdf_links: List[str], write_dir: str = DEFAULT_WRITE_DIR, mode:
                     counter += 1
 
                 # Create a new PDF document from the content
-                pdf_document = fitz.Document(stream=pdf_content, filetype="pdf")
+                pdf_document = pymupdf.Document(stream=pdf_content, filetype="pdf")
                 save_pdf_to_file(pdf_document, output_file_path, mode='overwrite')
                 success = True
     except Exception as e:
