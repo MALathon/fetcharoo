@@ -515,6 +515,16 @@ def download_pdfs_from_webpage(
 
     # If dry_run mode, return the URLs without downloading
     if dry_run:
+        # Apply filename/URL filtering if filter_config is provided
+        if filter_config is not None:
+            filtered_links = []
+            for pdf_link in pdf_links:
+                if should_download_pdf(pdf_link, size_bytes=None, filter_config=filter_config):
+                    filtered_links.append(pdf_link)
+                else:
+                    logging.info(f"DRY RUN: Filtered out PDF: {pdf_link}")
+            pdf_links = filtered_links
+
         logging.info(f"DRY RUN: Found {len(pdf_links)} PDF(s) that would be downloaded:")
         for pdf_url in pdf_links:
             logging.info(f"  - {pdf_url}")
