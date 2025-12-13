@@ -12,6 +12,7 @@ from fetcharoo.fetcharoo import (
     is_valid_url,
     is_safe_domain,
     sanitize_filename,
+    check_robots_txt,
 )
 from fetcharoo.pdf_utils import merge_pdfs, save_pdf_to_file
 from fetcharoo.downloader import download_pdf
@@ -35,6 +36,7 @@ __all__ = [
     "is_valid_url",
     "is_safe_domain",
     "sanitize_filename",
+    "check_robots_txt",
     # Version
     "__version__",
 ]

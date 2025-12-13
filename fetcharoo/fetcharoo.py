@@ -6,7 +6,8 @@ import requests
 import logging
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, unquote
-from typing import List, Set, Optional
+from urllib.robotparser import RobotFileParser
+from typing import List, Set, Optional, Dict
 
 from fetcharoo.downloader import download_pdf
 from fetcharoo.pdf_utils import merge_pdfs, save_pdf_to_file
@@ -23,6 +24,9 @@ USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
+
+# Cache for robots.txt parsers per domain
+_robots_cache: Dict[str, RobotFileParser] = {}
 
 
 def is_valid_url(url: str) -> bool:
@@ -112,13 +116,81 @@ def sanitize_filename(filename: str) -> str:
     return filename
 
 
+def check_robots_txt(url: str, user_agent: str = 'fetcharoo-bot') -> bool:
+    """
+    Check if crawling a URL is allowed according to robots.txt.
+
+    This function fetches and parses the robots.txt file for the domain
+    and checks if the given URL can be fetched by the specified user agent.
+    Results are cached per domain to avoid repeated fetches.
+
+    Args:
+        url: The URL to check.
+        user_agent: The user agent string to check permissions for. Defaults to 'fetcharoo-bot'.
+
+    Returns:
+        True if crawling is allowed, False if disallowed.
+        Returns True if robots.txt is missing or cannot be fetched (permissive default).
+    """
+    try:
+        parsed_url = urlparse(url)
+        domain = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        robots_url = f"{domain}/robots.txt"
+
+        # Check if we have a cached parser for this domain
+        if domain in _robots_cache:
+            rp = _robots_cache[domain]
+        else:
+            # Create a new RobotFileParser
+            rp = RobotFileParser()
+            rp.set_url(robots_url)
+
+            try:
+                # Fetch robots.txt using requests library
+                headers = {'User-Agent': user_agent}
+                response = requests.get(robots_url, headers=headers, timeout=10)
+
+                if response.status_code == 200:
+                    # Parse the robots.txt content
+                    robots_content = response.text.splitlines()
+                    rp.parse(robots_content)
+                else:
+                    # If robots.txt doesn't exist (404 or other error), allow everything
+                    logging.debug(f"robots.txt returned status {response.status_code} for {domain}")
+                    rp.parse([])
+
+                # Cache the parser
+                _robots_cache[domain] = rp
+
+            except requests.exceptions.RequestException as e:
+                # If we can't fetch robots.txt, assume it's allowed (permissive default)
+                logging.debug(f"Could not fetch robots.txt for {domain}: {e}")
+                # Cache a permissive parser
+                rp = RobotFileParser()
+                rp.set_url(robots_url)
+                # An empty robots.txt allows everything
+                rp.parse([])
+                _robots_cache[domain] = rp
+
+        # Check if the URL can be fetched
+        can_fetch = rp.can_fetch(user_agent, url)
+        return can_fetch
+
+    except Exception as e:
+        # On any error, default to allowing (permissive)
+        logging.debug(f"Error checking robots.txt for {url}: {e}")
+        return True
+
+
 def find_pdfs_from_webpage(
     url: str,
     recursion_depth: int = 0,
     visited: Optional[Set[str]] = None,
     allowed_domains: Optional[Set[str]] = None,
     request_delay: float = DEFAULT_REQUEST_DELAY,
-    timeout: int = DEFAULT_TIMEOUT
+    timeout: int = DEFAULT_TIMEOUT,
+    respect_robots: bool = False,
+    user_agent: str = 'fetcharoo-bot'
 ) -> List[str]:
     """
     Find and return a list of PDF URLs from a webpage up to a specified recursion depth.
@@ -131,6 +203,8 @@ def find_pdfs_from_webpage(
                         If None, only the initial URL's domain is allowed.
         request_delay: Delay in seconds between requests. Defaults to 0.5.
         timeout: Request timeout in seconds. Defaults to 30.
+        respect_robots: Whether to respect robots.txt rules. Defaults to False.
+        user_agent: User agent string for robots.txt checking. Defaults to 'fetcharoo-bot'.
 
     Returns:
         A list of PDF URLs found on the webpage.
@@ -181,6 +255,11 @@ def find_pdfs_from_webpage(
                 continue
 
             if link.lower().endswith('.pdf'):
+                # Check robots.txt compliance if enabled
+                if respect_robots and not check_robots_txt(link, user_agent):
+                    logging.warning(f"URL disallowed by robots.txt: {link}")
+                    continue
+
                 if link not in pdf_links:  # Avoid duplicates
                     pdf_links.append(link)
             elif recursion_depth > 0:
@@ -199,7 +278,9 @@ def find_pdfs_from_webpage(
                         visited,
                         allowed_domains,
                         request_delay,
-                        timeout
+                        timeout,
+                        respect_robots,
+                        user_agent
                     ))
 
     except requests.exceptions.Timeout:
@@ -297,7 +378,9 @@ def download_pdfs_from_webpage(
     write_dir: str = DEFAULT_WRITE_DIR,
     allowed_domains: Optional[Set[str]] = None,
     request_delay: float = DEFAULT_REQUEST_DELAY,
-    timeout: int = DEFAULT_TIMEOUT
+    timeout: int = DEFAULT_TIMEOUT,
+    respect_robots: bool = False,
+    user_agent: str = 'fetcharoo-bot'
 ) -> bool:
     """
     Download PDFs from a webpage and process them based on the specified mode.
@@ -311,6 +394,8 @@ def download_pdfs_from_webpage(
                         If None, only the initial URL's domain is allowed.
         request_delay: Delay in seconds between requests. Defaults to 0.5.
         timeout: Request timeout in seconds. Defaults to 30.
+        respect_robots: Whether to respect robots.txt rules. Defaults to False.
+        user_agent: User agent string for robots.txt checking. Defaults to 'fetcharoo-bot'.
 
     Returns:
         True if at least one PDF was processed successfully, False otherwise.
@@ -321,7 +406,9 @@ def download_pdfs_from_webpage(
         recursion_depth,
         allowed_domains=allowed_domains,
         request_delay=request_delay,
-        timeout=timeout
+        timeout=timeout,
+        respect_robots=respect_robots,
+        user_agent=user_agent
     )
 
     # Process the PDFs based on the specified mode
