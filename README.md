@@ -1,24 +1,28 @@
 # fetcharoo
 
-fetcharoo is a Python library for downloading PDF files from a webpage. It provides support for specifying recursion depth and offers the option to merge downloaded PDFs into a single file.
+[![Tests](https://github.com/MALathon/fetcharoo/actions/workflows/test.yml/badge.svg)](https://github.com/MALathon/fetcharoo/actions/workflows/test.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A Python library for downloading PDF files from webpages with support for recursive link following, PDF merging, and security hardening.
 
 ## Features
 
-- Download PDF files from a specified webpage.
-- Specify recursion depth to control how many levels of links to follow when searching for PDFs.
-- Choose to merge downloaded PDFs into a single file or store them as separate files.
-- Simple and easy-to-use Python interface.
+- Download PDF files from a specified webpage
+- Recursive crawling with configurable depth (up to 5 levels)
+- Merge downloaded PDFs into a single file or save separately
+- **Security hardening**: Domain restriction, path traversal protection, rate limiting
+- Configurable timeouts and request delays
+- Simple, easy-to-use Python API
 
 ## Requirements
 
 - Python 3.10 or higher
-- Third-party libraries: `requests`, `PyMuPDF`
+- Dependencies: `requests`, `pymupdf`, `beautifulsoup4`
 
 ## Installation
 
 ### Using pip
-
-You can install fetcharoo using pip:
 
 ```sh
 pip install fetcharoo
@@ -26,22 +30,19 @@ pip install fetcharoo
 
 ### Using Poetry
 
-If you are using Poetry to manage your project, you can install fetcharoo as a dependency:
-
 ```sh
 poetry add fetcharoo
 ```
-If you don't have Poetry installed, you can install it by following the instructions on the <a href="https://python-poetry.org/docs/#installation" target="_new">official Poetry website</a>.
 
-### Getting Started
+### From source
 
-To get started with fetcharoo, follow these steps:
+```sh
+git clone https://github.com/MALathon/fetcharoo.git
+cd fetcharoo
+poetry install
+```
 
-- Install the library using pip or Poetry (see the Installation section above).
-- Import the `download_pdfs_from_webpage` function from the `fetcharoo` module.
-- Use the function to download PDFs from a webpage, specifying the URL, recursion depth, mode (merge or separate), and output directory.
-
-Here's a basic example:
+## Quick Start
 
 ```python
 from fetcharoo import download_pdfs_from_webpage
@@ -51,48 +52,129 @@ download_pdfs_from_webpage(
     url='https://example.com',
     recursion_depth=1,
     mode='merge',
-    output_dir='output'
+    write_dir='output'
 )
 ```
-### Advanced Usage
 
-fetcharoo provides additional options for customizing the behavior of the library:
+## Usage
 
-- To download PDFs and store them as separate files, set the `mode` parameter to `separate`:
+### Basic Usage
 
 ```python
+from fetcharoo import download_pdfs_from_webpage
+
+# Download and save PDFs as separate files
 download_pdfs_from_webpage(
-    url='https://example.com',
-    recursion_depth=1,
+    url='https://example.com/documents',
+    recursion_depth=0,  # Only search the specified page
     mode='separate',
-    output_dir='output'
+    write_dir='downloads'
 )
 ```
-To control the recursion depth, adjust the `recursion_depth` parameter. For example, to follow links up to two levels deep, set `recursion_depth`=2.
 
-### Contributing
-Contributions to fetcharoo are welcome! If you'd like to contribute, please follow these steps:
+### With Security Options
 
-- Fork the repository on GitHub.
-- Create a branch for your changes.
-- Make your changes and commit them to your branch.
-- Submit a pull request with your changes.
-- We appreciate any contributions, whether it's fixing bugs, adding new features, or improving documentation.
+```python
+from fetcharoo import download_pdfs_from_webpage
 
-### Support
-If you encounter any issues or have questions about using fetcharoo, please open an issue on the GitHub repository. We'll do our best to assist you.
+# Restrict crawling to specific domains
+download_pdfs_from_webpage(
+    url='https://example.com',
+    recursion_depth=2,
+    mode='merge',
+    write_dir='output',
+    allowed_domains={'example.com', 'docs.example.com'},
+    request_delay=1.0,  # 1 second between requests
+    timeout=60  # 60 second timeout
+)
+```
 
-### Changelog
-Please refer to the CHANGELOG.md file for a summary of changes in each release.
+### Finding PDFs Without Downloading
 
-### Authors and Acknowledgments
-fetcharoo was developed by Mark Lifson. I'd like to thank all contributors and users for their support.
+```python
+from fetcharoo import find_pdfs_from_webpage
 
-### License
-This project is licensed under the MIT License. See the LICENSE file for details. The MIT License allows for broad permissions, including use, modification, distribution, and sublicensing of the software.
+# Just get the list of PDF URLs
+pdf_urls = find_pdfs_from_webpage(
+    url='https://example.com',
+    recursion_depth=1
+)
 
-## Update - May 7th, 2023
+for url in pdf_urls:
+    print(url)
+```
 
-Added new features to fetcharoo:
+### Processing PDFs Separately
 
-- `merge_pdfs` function to merge multiple PDFs into a single file
+```python
+from fetcharoo import find_pdfs_from_webpage, process_pdfs
+
+# Find PDFs first
+pdf_urls = find_pdfs_from_webpage('https://example.com')
+
+# Then process them
+if pdf_urls:
+    success = process_pdfs(
+        pdf_links=pdf_urls,
+        write_dir='output',
+        mode='separate'
+    )
+```
+
+## API Reference
+
+### `download_pdfs_from_webpage()`
+
+Main function to find and download PDFs from a webpage.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `url` | str | required | The webpage URL to search |
+| `recursion_depth` | int | 0 | How many levels of links to follow (max 5) |
+| `mode` | str | 'separate' | 'merge' or 'separate' |
+| `write_dir` | str | 'output' | Output directory for PDFs |
+| `allowed_domains` | set | None | Restrict crawling to these domains |
+| `request_delay` | float | 0.5 | Seconds between requests |
+| `timeout` | int | 30 | Request timeout in seconds |
+
+### `find_pdfs_from_webpage()`
+
+Find PDF URLs without downloading.
+
+### `process_pdfs()`
+
+Download and save a list of PDF URLs.
+
+### Utility Functions
+
+- `merge_pdfs()` - Merge multiple PDF documents
+- `is_valid_url()` - Validate URL format and scheme
+- `is_safe_domain()` - Check if domain is allowed
+- `sanitize_filename()` - Prevent path traversal attacks
+
+## Security Features
+
+fetcharoo includes several security measures:
+
+- **Domain restriction**: Limit recursive crawling to specified domains (SSRF protection)
+- **Path traversal protection**: Sanitizes filenames to prevent directory escape
+- **Rate limiting**: Configurable delays between requests
+- **Timeout handling**: Prevents hanging on slow servers
+- **URL validation**: Only allows http/https schemes
+
+## Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes with tests
+4. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Author
+
+Developed by Mark A. Lifson, Ph.D.
