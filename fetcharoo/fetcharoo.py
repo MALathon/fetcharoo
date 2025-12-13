@@ -19,14 +19,38 @@ DEFAULT_TIMEOUT = 30
 DEFAULT_REQUEST_DELAY = 0.5  # seconds between requests to avoid hammering servers
 MAX_RECURSION_DEPTH = 5  # safety limit
 
-# Modern User-Agent string
-USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+# Default User-Agent string - identifies the bot properly for site operators
+DEFAULT_USER_AGENT = 'fetcharoo/0.1.0 (+https://github.com/MALathon/fetcharoo)'
+
+# Module-level variable to track the current default user agent
+_default_user_agent = DEFAULT_USER_AGENT
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
 # Cache for robots.txt parsers per domain
 _robots_cache: Dict[str, RobotFileParser] = {}
+
+
+def set_default_user_agent(agent_string: str) -> None:
+    """
+    Set the default User-Agent string for all HTTP requests.
+
+    Args:
+        agent_string: The User-Agent string to use as default.
+    """
+    global _default_user_agent
+    _default_user_agent = agent_string
+
+
+def get_default_user_agent() -> str:
+    """
+    Get the current default User-Agent string.
+
+    Returns:
+        The current default User-Agent string.
+    """
+    return _default_user_agent
 
 
 def is_valid_url(url: str) -> bool:
@@ -190,7 +214,7 @@ def find_pdfs_from_webpage(
     request_delay: float = DEFAULT_REQUEST_DELAY,
     timeout: int = DEFAULT_TIMEOUT,
     respect_robots: bool = False,
-    user_agent: str = 'fetcharoo-bot'
+    user_agent: Optional[str] = None
 ) -> List[str]:
     """
     Find and return a list of PDF URLs from a webpage up to a specified recursion depth.
@@ -204,7 +228,7 @@ def find_pdfs_from_webpage(
         request_delay: Delay in seconds between requests. Defaults to 0.5.
         timeout: Request timeout in seconds. Defaults to 30.
         respect_robots: Whether to respect robots.txt rules. Defaults to False.
-        user_agent: User agent string for robots.txt checking. Defaults to 'fetcharoo-bot'.
+        user_agent: Custom User-Agent string. If None, uses the default.
 
     Returns:
         A list of PDF URLs found on the webpage.
@@ -223,6 +247,10 @@ def find_pdfs_from_webpage(
         base_domain = parsed_base.netloc.lower().split(':')[0]
         allowed_domains = {base_domain}
 
+    # Use custom user agent or fall back to default
+    if user_agent is None:
+        user_agent = get_default_user_agent()
+
     visited.add(url)
     pdf_links = []
 
@@ -236,7 +264,7 @@ def find_pdfs_from_webpage(
             return pdf_links
 
         # Fetch the webpage content with timeout
-        headers = {'User-Agent': USER_AGENT}
+        headers = {'User-Agent': user_agent}
         response = requests.get(url, headers=headers, timeout=timeout)
         response.raise_for_status()
 
@@ -295,7 +323,8 @@ def process_pdfs(
     pdf_links: List[str],
     write_dir: str = DEFAULT_WRITE_DIR,
     mode: str = DEFAULT_MODE,
-    timeout: int = DEFAULT_TIMEOUT
+    timeout: int = DEFAULT_TIMEOUT,
+    user_agent: Optional[str] = None
 ) -> bool:
     """
     Download and process each PDF file based on the specified mode ('separate' or 'merge').
@@ -306,6 +335,7 @@ def process_pdfs(
         write_dir: The directory to write the output PDF files. Defaults to DEFAULT_WRITE_DIR.
         mode: The processing mode, either 'separate' or 'merge'. Defaults to DEFAULT_MODE.
         timeout: The timeout for downloading PDFs in seconds. Defaults to 30.
+        user_agent: Custom User-Agent string. If None, uses the default.
 
     Returns:
         True if at least one PDF was processed successfully, False otherwise.
@@ -324,8 +354,12 @@ def process_pdfs(
     # Ensure the write directory exists
     os.makedirs(write_dir, exist_ok=True)
 
+    # Use custom user agent or fall back to default
+    if user_agent is None:
+        user_agent = get_default_user_agent()
+
     # Download PDF contents
-    pdf_contents = [download_pdf(pdf_link, timeout) for pdf_link in pdf_links]
+    pdf_contents = [download_pdf(pdf_link, timeout, user_agent=user_agent) for pdf_link in pdf_links]
     pdf_contents_valid = [(content, link) for content, link in zip(pdf_contents, pdf_links)
                           if content is not None and content.startswith(b'%PDF')]
 
@@ -380,7 +414,7 @@ def download_pdfs_from_webpage(
     request_delay: float = DEFAULT_REQUEST_DELAY,
     timeout: int = DEFAULT_TIMEOUT,
     respect_robots: bool = False,
-    user_agent: str = 'fetcharoo-bot'
+    user_agent: Optional[str] = None
 ) -> bool:
     """
     Download PDFs from a webpage and process them based on the specified mode.
@@ -395,7 +429,7 @@ def download_pdfs_from_webpage(
         request_delay: Delay in seconds between requests. Defaults to 0.5.
         timeout: Request timeout in seconds. Defaults to 30.
         respect_robots: Whether to respect robots.txt rules. Defaults to False.
-        user_agent: User agent string for robots.txt checking. Defaults to 'fetcharoo-bot'.
+        user_agent: Custom User-Agent string. If None, uses the default.
 
     Returns:
         True if at least one PDF was processed successfully, False otherwise.
@@ -412,4 +446,4 @@ def download_pdfs_from_webpage(
     )
 
     # Process the PDFs based on the specified mode
-    return process_pdfs(pdf_links, write_dir, mode, timeout)
+    return process_pdfs(pdf_links, write_dir, mode, timeout, user_agent)

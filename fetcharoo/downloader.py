@@ -3,8 +3,8 @@ import requests
 import time
 from typing import Optional
 
-# Modern User-Agent string
-USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+# Default User-Agent string - identifies the bot properly for site operators
+DEFAULT_USER_AGENT = 'fetcharoo/0.1.0 (+https://github.com/MALathon/fetcharoo)'
 
 # Valid PDF content types
 VALID_PDF_CONTENT_TYPES = {
@@ -14,10 +14,23 @@ VALID_PDF_CONTENT_TYPES = {
 }
 
 
+def _get_default_user_agent() -> str:
+    """
+    Get the current default User-Agent string from the main module.
+
+    Returns:
+        The current default User-Agent string.
+    """
+    # Import here to avoid circular imports
+    from fetcharoo.fetcharoo import get_default_user_agent
+    return get_default_user_agent()
+
+
 def download_pdf(
     pdf_link: str,
     timeout: int = 30,
-    max_retries: int = 3
+    max_retries: int = 3,
+    user_agent: Optional[str] = None
 ) -> Optional[bytes]:
     """
     Download a single PDF file from a URL.
@@ -26,11 +39,16 @@ def download_pdf(
         pdf_link: The URL of the PDF file to download.
         timeout: Request timeout in seconds. Defaults to 30.
         max_retries: Maximum number of retry attempts. Defaults to 3.
+        user_agent: Custom User-Agent string. If None, uses the default.
 
     Returns:
         The PDF file content as bytes, or None if download failed.
     """
-    headers = {'User-Agent': USER_AGENT}
+    # Use custom user agent or fall back to default
+    if user_agent is None:
+        user_agent = _get_default_user_agent()
+
+    headers = {'User-Agent': user_agent}
     start_time = time.time()
 
     for attempt in range(max_retries):

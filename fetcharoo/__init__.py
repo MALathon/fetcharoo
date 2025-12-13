@@ -13,6 +13,8 @@ from fetcharoo.fetcharoo import (
     is_safe_domain,
     sanitize_filename,
     check_robots_txt,
+    set_default_user_agent,
+    get_default_user_agent,
 )
 from fetcharoo.pdf_utils import merge_pdfs, save_pdf_to_file
 from fetcharoo.downloader import download_pdf
@@ -37,6 +39,9 @@ __all__ = [
     "is_safe_domain",
     "sanitize_filename",
     "check_robots_txt",
+    # User-Agent customization
+    "set_default_user_agent",
+    "get_default_user_agent",
     # Version
     "__version__",
 ]
