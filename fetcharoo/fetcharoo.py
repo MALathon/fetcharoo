@@ -10,6 +10,7 @@ from typing import List, Set, Optional
 
 from fetcharoo.downloader import download_pdf
 from fetcharoo.pdf_utils import merge_pdfs, save_pdf_to_file
+from fetcharoo.filtering import FilterConfig, should_download_pdf
 
 # Define constants
 DEFAULT_WRITE_DIR = 'output'
@@ -214,7 +215,8 @@ def process_pdfs(
     pdf_links: List[str],
     write_dir: str = DEFAULT_WRITE_DIR,
     mode: str = DEFAULT_MODE,
-    timeout: int = DEFAULT_TIMEOUT
+    timeout: int = DEFAULT_TIMEOUT,
+    filter_config: Optional[FilterConfig] = None
 ) -> bool:
     """
     Download and process each PDF file based on the specified mode ('separate' or 'merge').
@@ -225,12 +227,29 @@ def process_pdfs(
         write_dir: The directory to write the output PDF files. Defaults to DEFAULT_WRITE_DIR.
         mode: The processing mode, either 'separate' or 'merge'. Defaults to DEFAULT_MODE.
         timeout: The timeout for downloading PDFs in seconds. Defaults to 30.
+        filter_config: Optional FilterConfig to filter PDFs. If None, no filtering is applied.
 
     Returns:
         True if at least one PDF was processed successfully, False otherwise.
     """
     if not pdf_links:
         return False
+
+    # Apply filtering if filter_config is provided
+    if filter_config is not None:
+        filtered_links = []
+        for pdf_link in pdf_links:
+            # For now, we don't have size information until we download
+            # So we only apply filename and URL filters here
+            if should_download_pdf(pdf_link, size_bytes=None, filter_config=filter_config):
+                filtered_links.append(pdf_link)
+            else:
+                logging.info(f"Filtered out PDF (filename/URL): {pdf_link}")
+        pdf_links = filtered_links
+
+        if not pdf_links:
+            logging.warning("All PDFs were filtered out.")
+            return False
 
     # Validate mode
     if mode not in ('separate', 'merge'):
@@ -251,6 +270,21 @@ def process_pdfs(
     if not pdf_contents_valid:
         logging.warning("No valid PDF content found.")
         return False
+
+    # Apply size filtering if filter_config is provided
+    if filter_config is not None and (filter_config.min_size is not None or filter_config.max_size is not None):
+        size_filtered = []
+        for content, link in pdf_contents_valid:
+            size_bytes = len(content)
+            if should_download_pdf(link, size_bytes=size_bytes, filter_config=filter_config):
+                size_filtered.append((content, link))
+            else:
+                logging.info(f"Filtered out PDF (size: {size_bytes} bytes): {link}")
+        pdf_contents_valid = size_filtered
+
+        if not pdf_contents_valid:
+            logging.warning("All PDFs were filtered out by size limits.")
+            return False
 
     success = False
     try:
@@ -297,7 +331,8 @@ def download_pdfs_from_webpage(
     write_dir: str = DEFAULT_WRITE_DIR,
     allowed_domains: Optional[Set[str]] = None,
     request_delay: float = DEFAULT_REQUEST_DELAY,
-    timeout: int = DEFAULT_TIMEOUT
+    timeout: int = DEFAULT_TIMEOUT,
+    filter_config: Optional[FilterConfig] = None
 ) -> bool:
     """
     Download PDFs from a webpage and process them based on the specified mode.
@@ -311,6 +346,7 @@ def download_pdfs_from_webpage(
                         If None, only the initial URL's domain is allowed.
         request_delay: Delay in seconds between requests. Defaults to 0.5.
         timeout: Request timeout in seconds. Defaults to 30.
+        filter_config: Optional FilterConfig to filter PDFs. If None, no filtering is applied.
 
     Returns:
         True if at least one PDF was processed successfully, False otherwise.
@@ -325,4 +361,4 @@ def download_pdfs_from_webpage(
     )
 
     # Process the PDFs based on the specified mode
-    return process_pdfs(pdf_links, write_dir, mode, timeout)
+    return process_pdfs(pdf_links, write_dir, mode, timeout, filter_config)
