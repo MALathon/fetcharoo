@@ -264,7 +264,9 @@ def find_pdfs_from_webpage(
     timeout: int = DEFAULT_TIMEOUT,
     respect_robots: bool = False,
     user_agent: Optional[str] = None,
-    show_progress: bool = False
+    show_progress: bool = False,
+    deduplicate: bool = True,
+    _seen_pdfs: Optional[Set[str]] = None
 ) -> List[str]:
     """
     Find and return a list of PDF URLs from a webpage up to a specified recursion depth.
@@ -280,9 +282,12 @@ def find_pdfs_from_webpage(
         respect_robots: Whether to respect robots.txt rules. Defaults to False.
         user_agent: Custom User-Agent string. If None, uses the default.
         show_progress: Whether to show progress bars. Defaults to False.
+        deduplicate: Whether to remove duplicate PDF URLs. Defaults to True.
+                    When True, each unique PDF URL appears only once in the result.
+        _seen_pdfs: Internal parameter for tracking seen PDFs during recursion.
 
     Returns:
-        A list of PDF URLs found on the webpage.
+        A list of PDF URLs found on the webpage (deduplicated by default).
     """
     # Safety limit on recursion depth
     if recursion_depth > MAX_RECURSION_DEPTH:
@@ -291,6 +296,10 @@ def find_pdfs_from_webpage(
 
     if visited is None:
         visited = set()
+
+    # Initialize seen PDFs set for deduplication
+    if deduplicate and _seen_pdfs is None:
+        _seen_pdfs = set()
 
     # Initialize allowed domains from the base URL if not provided
     if allowed_domains is None:
@@ -343,8 +352,15 @@ def find_pdfs_from_webpage(
                     logging.warning(f"URL disallowed by robots.txt: {link}")
                     continue
 
-                if link not in pdf_links:  # Avoid duplicates
+                # Deduplicate: check both local list and global seen set
+                is_duplicate = link in pdf_links
+                if deduplicate and _seen_pdfs is not None:
+                    is_duplicate = is_duplicate or link in _seen_pdfs
+
+                if not is_duplicate:
                     pdf_links.append(link)
+                    if deduplicate and _seen_pdfs is not None:
+                        _seen_pdfs.add(link)
             elif recursion_depth > 0:
                 if is_safe_domain(link, allowed_domains):
                     other_links.append(link)
@@ -364,7 +380,9 @@ def find_pdfs_from_webpage(
                         timeout,
                         respect_robots,
                         user_agent,
-                        show_progress
+                        show_progress,
+                        deduplicate,
+                        _seen_pdfs
                     ))
 
     except requests.exceptions.Timeout:
