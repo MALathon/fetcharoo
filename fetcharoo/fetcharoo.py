@@ -402,7 +402,8 @@ def process_pdfs(
     show_progress: bool = False,
     filter_config: Optional[FilterConfig] = None,
     sort_by: Optional[str] = None,
-    sort_key: Optional[Callable[[str], any]] = None
+    sort_key: Optional[Callable[[str], any]] = None,
+    output_name: Optional[str] = None
 ) -> bool:
     """
     Download and process each PDF file based on the specified mode ('separate' or 'merge').
@@ -423,6 +424,8 @@ def process_pdfs(
                  Defaults to None (no sorting, preserves discovery order).
         sort_key: Custom sort key function that takes a URL and returns a sortable value.
                   Takes precedence over sort_by if both are provided.
+        output_name: Custom filename for merged PDF output. Only used in 'merge' mode.
+                    Defaults to 'merged.pdf' if not specified.
 
     Returns:
         True if at least one PDF was processed successfully, False otherwise.
@@ -500,7 +503,11 @@ def process_pdfs(
     try:
         if mode == 'merge':
             # Determine the output file name for the merged PDF
-            file_name = 'merged.pdf'
+            if output_name:
+                # Sanitize custom filename and ensure .pdf extension
+                file_name = sanitize_filename(output_name)
+            else:
+                file_name = 'merged.pdf'
             output_file_path = os.path.join(write_dir, file_name)
 
             # Merge PDFs and save the merged document
@@ -548,7 +555,8 @@ def download_pdfs_from_webpage(
     show_progress: bool = False,
     filter_config: Optional[FilterConfig] = None,
     sort_by: Optional[str] = None,
-    sort_key: Optional[Callable[[str], any]] = None
+    sort_key: Optional[Callable[[str], any]] = None,
+    output_name: Optional[str] = None
 ) -> Union[bool, Dict[str, Union[List[str], int]]]:
     """
     Download PDFs from a webpage and process them based on the specified mode.
@@ -571,6 +579,8 @@ def download_pdfs_from_webpage(
                  Defaults to None (no sorting, preserves discovery order).
         sort_key: Custom sort key function that takes a URL and returns a sortable value.
                   Takes precedence over sort_by if both are provided.
+        output_name: Custom filename for merged PDF output. Only used in 'merge' mode.
+                    Defaults to 'merged.pdf' if not specified.
 
     Returns:
         If dry_run=True: A dict with {"urls": [...], "count": N}
@@ -618,5 +628,6 @@ def download_pdfs_from_webpage(
         show_progress=show_progress,
         filter_config=filter_config,
         sort_by=sort_by,
-        sort_key=sort_key
+        sort_key=sort_key,
+        output_name=output_name
     )

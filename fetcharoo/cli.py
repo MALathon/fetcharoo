@@ -75,6 +75,13 @@ Examples:
     )
 
     parser.add_argument(
+        '--output-name',
+        type=str,
+        metavar='FILENAME',
+        help='custom filename for merged PDF (only used with --merge)'
+    )
+
+    parser.add_argument(
         '--dry-run',
         action='store_true',
         help='list PDFs that would be downloaded without actually downloading them'
@@ -243,7 +250,8 @@ def main(argv: Optional[list] = None) -> int:
             dry_run=False,
             show_progress=args.progress,
             filter_config=filter_config,
-            sort_by=args.sort_by
+            sort_by=args.sort_by,
+            output_name=args.output_name
         )
 
         if success:
