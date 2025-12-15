@@ -109,9 +109,9 @@ class TestProgressBars(unittest.TestCase):
         # Verify that downloads happened for each PDF
         self.assertEqual(mock_download_pdf.call_count, len(self.test_pdf_links))
 
-    @patch('fetcharoo.fetcharoo.logging')
+    @patch('fetcharoo.fetcharoo.logger')
     @patch('fetcharoo.fetcharoo.requests.get')
-    def test_find_pdfs_progress_with_show_progress_true(self, mock_get, mock_logging):
+    def test_find_pdfs_progress_with_show_progress_true(self, mock_get, mock_logger):
         """Test that find_pdfs_from_webpage shows progress when show_progress=True."""
         # Mock the response
         mock_response = MagicMock()
@@ -131,8 +131,8 @@ class TestProgressBars(unittest.TestCase):
 
         # Should find PDFs
         self.assertEqual(len(result), 2)
-        # Should log finding progress
-        mock_logging.info.assert_called()
+        # Should log finding progress at DEBUG level (quiet by default)
+        mock_logger.debug.assert_called()
 
     @patch('fetcharoo.fetcharoo.process_pdfs')
     @patch('fetcharoo.fetcharoo.find_pdfs_from_webpage')

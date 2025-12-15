@@ -28,8 +28,12 @@ DEFAULT_USER_AGENT = 'fetcharoo/0.2.0 (+https://github.com/MALathon/fetcharoo)'
 # Module-level variable to track the current default user agent
 _default_user_agent = DEFAULT_USER_AGENT
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging with a dedicated logger
+logger = logging.getLogger('fetcharoo')
+# Don't add handlers by default - let users configure logging
+# Only set level if not already configured
+if not logger.handlers and not logging.root.handlers:
+    logger.setLevel(logging.WARNING)  # Quiet by default
 
 # Cache for robots.txt parsers per domain
 _robots_cache: Dict[str, RobotFileParser] = {}
@@ -103,7 +107,7 @@ def _get_sort_key(sort_by: Optional[str], sort_key: Optional[Callable[[str], any
         # For descending, we'll handle it in the sort call
         return lambda url: os.path.basename(urlparse(url).path).lower()
     else:
-        logging.warning(f"Unknown sort_by value: {sort_by}. Using no sorting.")
+        logger.warning(f"Unknown sort_by value: {sort_by}. Using no sorting.")
         return None
 
 
@@ -255,7 +259,7 @@ def check_robots_txt(url: str, user_agent: str = 'fetcharoo-bot') -> bool:
                     rp.parse(robots_content)
                 else:
                     # If robots.txt doesn't exist (404 or other error), allow everything
-                    logging.debug(f"robots.txt returned status {response.status_code} for {domain}")
+                    logger.debug(f"robots.txt returned status {response.status_code} for {domain}")
                     rp.parse([])
 
                 # Cache the parser
@@ -263,7 +267,7 @@ def check_robots_txt(url: str, user_agent: str = 'fetcharoo-bot') -> bool:
 
             except requests.exceptions.RequestException as e:
                 # If we can't fetch robots.txt, assume it's allowed (permissive default)
-                logging.debug(f"Could not fetch robots.txt for {domain}: {e}")
+                logger.debug(f"Could not fetch robots.txt for {domain}: {e}")
                 # Cache a permissive parser
                 rp = RobotFileParser()
                 rp.set_url(robots_url)
@@ -277,7 +281,7 @@ def check_robots_txt(url: str, user_agent: str = 'fetcharoo-bot') -> bool:
 
     except Exception as e:
         # On any error, default to allowing (permissive)
-        logging.debug(f"Error checking robots.txt for {url}: {e}")
+        logger.debug(f"Error checking robots.txt for {url}: {e}")
         return True
 
 
@@ -317,7 +321,7 @@ def find_pdfs_from_webpage(
     """
     # Safety limit on recursion depth
     if recursion_depth > MAX_RECURSION_DEPTH:
-        logging.warning(f"Recursion depth {recursion_depth} exceeds maximum {MAX_RECURSION_DEPTH}, limiting.")
+        logger.warning(f"Recursion depth {recursion_depth} exceeds maximum {MAX_RECURSION_DEPTH}, limiting.")
         recursion_depth = MAX_RECURSION_DEPTH
 
     if visited is None:
@@ -340,17 +344,17 @@ def find_pdfs_from_webpage(
     visited.add(url)
     pdf_links = []
 
-    # Log progress if enabled
+    # Log progress if enabled (debug level to reduce noise)
     if show_progress:
-        logging.info(f"Finding PDFs from: {url}")
+        logger.debug(f"Finding PDFs from: {url}")
 
     try:
         if not is_valid_url(url):
-            logging.error(f"Invalid URL: {url}")
+            logger.error(f"Invalid URL: {url}")
             return pdf_links
 
         if not is_safe_domain(url, allowed_domains):
-            logging.warning(f"URL domain not in allowed list: {url}")
+            logger.warning(f"URL domain not in allowed list: {url}")
             return pdf_links
 
         # Fetch the webpage content with timeout
@@ -375,7 +379,7 @@ def find_pdfs_from_webpage(
             if link.lower().endswith('.pdf'):
                 # Check robots.txt compliance if enabled
                 if respect_robots and not check_robots_txt(link, user_agent):
-                    logging.warning(f"URL disallowed by robots.txt: {link}")
+                    logger.warning(f"URL disallowed by robots.txt: {link}")
                     continue
 
                 # Deduplicate: check both local list and global seen set
@@ -412,9 +416,9 @@ def find_pdfs_from_webpage(
                     ))
 
     except requests.exceptions.Timeout:
-        logging.error(f"Request timed out: {url}")
+        logger.error(f"Request timed out: {url}")
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error fetching webpage: {e}")
+        logger.error(f"Error fetching webpage: {e}")
 
     return pdf_links
 
@@ -471,12 +475,12 @@ def process_pdfs(
             if should_download_pdf(pdf_link, size_bytes=None, filter_config=filter_config):
                 filtered_links.append(pdf_link)
             else:
-                logging.info(f"Filtered out PDF (filename/URL): {pdf_link}")
+                logger.info(f"Filtered out PDF (filename/URL): {pdf_link}")
                 result.filtered_count += 1
         pdf_links = filtered_links
 
         if not pdf_links:
-            logging.warning("All PDFs were filtered out.")
+            logger.warning("All PDFs were filtered out.")
             return result
 
     # Apply sorting if requested (useful for merge mode to ensure correct order)
@@ -484,12 +488,12 @@ def process_pdfs(
     if resolved_sort_key is not None:
         reverse = (sort_by == 'alpha_desc')
         pdf_links = sorted(pdf_links, key=resolved_sort_key, reverse=reverse)
-        logging.debug(f"Sorted {len(pdf_links)} PDFs using {'custom key' if sort_key else sort_by}")
+        logger.debug(f"Sorted {len(pdf_links)} PDFs using {'custom key' if sort_key else sort_by}")
 
     # Validate mode
     if mode not in ('separate', 'merge'):
         error_msg = f"Invalid mode: {mode}. Must be 'separate' or 'merge'."
-        logging.error(error_msg)
+        logger.error(error_msg)
         result.errors.append(error_msg)
         return result
 
@@ -519,7 +523,7 @@ def process_pdfs(
             result.errors.append(f"Failed to download or invalid PDF: {link}")
 
     if not pdf_contents_valid:
-        logging.warning("No valid PDF content found.")
+        logger.warning("No valid PDF content found.")
         return result
 
     # Apply size filtering if filter_config is provided
@@ -530,12 +534,12 @@ def process_pdfs(
             if should_download_pdf(link, size_bytes=size_bytes, filter_config=filter_config):
                 size_filtered.append((content, link))
             else:
-                logging.info(f"Filtered out PDF (size: {size_bytes} bytes): {link}")
+                logger.info(f"Filtered out PDF (size: {size_bytes} bytes): {link}")
                 result.filtered_count += 1
         pdf_contents_valid = size_filtered
 
         if not pdf_contents_valid:
-            logging.warning("All PDFs were filtered out by size limits.")
+            logger.warning("All PDFs were filtered out by size limits.")
             return result
 
     result.downloaded_count = len(pdf_contents_valid)
@@ -579,7 +583,7 @@ def process_pdfs(
 
     except Exception as e:
         error_msg = f"Error processing PDFs: {e}"
-        logging.error(error_msg)
+        logger.error(error_msg)
         result.errors.append(error_msg)
 
     return result
@@ -652,12 +656,12 @@ def download_pdfs_from_webpage(
                 if should_download_pdf(pdf_link, size_bytes=None, filter_config=filter_config):
                     filtered_links.append(pdf_link)
                 else:
-                    logging.info(f"DRY RUN: Filtered out PDF: {pdf_link}")
+                    logger.info(f"DRY RUN: Filtered out PDF: {pdf_link}")
             pdf_links = filtered_links
 
-        logging.info(f"DRY RUN: Found {len(pdf_links)} PDF(s) that would be downloaded:")
+        logger.info(f"DRY RUN: Found {len(pdf_links)} PDF(s) that would be downloaded:")
         for pdf_url in pdf_links:
-            logging.info(f"  - {pdf_url}")
+            logger.info(f"  - {pdf_url}")
         return {
             "urls": pdf_links,
             "count": len(pdf_links)

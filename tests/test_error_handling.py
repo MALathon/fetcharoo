@@ -78,10 +78,10 @@ class TestFetcharooErrorHandling(unittest.TestCase):
 
         # Call with recursion_depth > MAX_RECURSION_DEPTH (which is 5)
         # The function should limit it to 5
-        with patch('fetcharoo.fetcharoo.logging') as mock_logging:
+        with patch('fetcharoo.fetcharoo.logger') as mock_logger:
             pdf_links = find_pdfs_from_webpage(base_url, recursion_depth=10)
             # Check that warning was logged about exceeding max recursion
-            mock_logging.warning.assert_called()
+            mock_logger.warning.assert_called()
 
     @responses.activate
     def test_find_pdfs_request_timeout(self):
@@ -91,12 +91,12 @@ class TestFetcharooErrorHandling(unittest.TestCase):
         # Mock a timeout exception
         responses.add(responses.GET, url, body=requests.exceptions.Timeout())
 
-        with patch('fetcharoo.fetcharoo.logging') as mock_logging:
+        with patch('fetcharoo.fetcharoo.logger') as mock_logger:
             pdf_links = find_pdfs_from_webpage(url, recursion_depth=0)
             # Should return empty list and log error
             self.assertEqual(pdf_links, [])
             # Verify that timeout error was logged
-            mock_logging.error.assert_called()
+            mock_logger.error.assert_called()
 
     @responses.activate
     def test_find_pdfs_domain_restriction_for_recursive_crawl(self):
@@ -432,13 +432,13 @@ class TestIntegrationErrorHandling(unittest.TestCase):
         ]
 
         with TemporaryDirectory() as temp_dir:
-            with patch('fetcharoo.fetcharoo.logging') as mock_logging:
+            with patch('fetcharoo.fetcharoo.logger') as mock_logger:
                 result = process_pdfs(pdf_links, temp_dir, mode='separate')
 
                 # Should return False (no valid content)
                 self.assertFalse(result)
                 # Should log warning about no valid content
-                mock_logging.warning.assert_called()
+                mock_logger.warning.assert_called()
 
     @patch('fetcharoo.fetcharoo.download_pdf')
     def test_process_pdfs_with_non_pdf_content(self, mock_download):
@@ -449,13 +449,13 @@ class TestIntegrationErrorHandling(unittest.TestCase):
         pdf_links = ['https://example.com/fake.pdf']
 
         with TemporaryDirectory() as temp_dir:
-            with patch('fetcharoo.fetcharoo.logging') as mock_logging:
+            with patch('fetcharoo.fetcharoo.logger') as mock_logger:
                 result = process_pdfs(pdf_links, temp_dir, mode='separate')
 
                 # Should return False (content doesn't start with %PDF)
                 self.assertFalse(result)
                 # Should log warning about no valid content
-                mock_logging.warning.assert_called()
+                mock_logger.warning.assert_called()
 
     @patch('fetcharoo.fetcharoo.download_pdf')
     def test_process_pdfs_merge_mode_with_partial_failures(self, mock_download):
