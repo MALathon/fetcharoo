@@ -115,6 +115,17 @@ Examples:
         help='show progress bars during download'
     )
 
+    # Sorting options
+    parser.add_argument(
+        '--sort-by',
+        type=str,
+        choices=['none', 'numeric', 'alpha', 'alpha_desc'],
+        default=None,
+        metavar='STRATEGY',
+        help='sort PDFs before merging: numeric (by numbers in filename), alpha (alphabetical), '
+             'alpha_desc (reverse alphabetical), none (default, preserves discovery order)'
+    )
+
     # Filtering options
     parser.add_argument(
         '--include',
@@ -231,7 +242,8 @@ def main(argv: Optional[list] = None) -> int:
             user_agent=args.user_agent,
             dry_run=False,
             show_progress=args.progress,
-            filter_config=filter_config
+            filter_config=filter_config,
+            sort_by=args.sort_by
         )
 
         if success:

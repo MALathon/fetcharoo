@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from tqdm import tqdm
 from urllib.parse import urljoin, urlparse, unquote
 from urllib.robotparser import RobotFileParser
-from typing import List, Set, Optional, Union, Dict
+from typing import List, Set, Optional, Union, Dict, Callable
 
 from fetcharoo.downloader import download_pdf
 from fetcharoo.pdf_utils import merge_pdfs, save_pdf_to_file
@@ -32,6 +32,53 @@ logging.basicConfig(level=logging.INFO)
 
 # Cache for robots.txt parsers per domain
 _robots_cache: Dict[str, RobotFileParser] = {}
+
+# Valid sort_by options
+SORT_BY_OPTIONS = ('none', 'numeric', 'alpha', 'alpha_desc')
+
+
+def _extract_numeric_key(url: str) -> tuple:
+    """
+    Extract numeric parts from a URL for sorting.
+
+    Returns a tuple of numbers found in the filename, allowing proper
+    sorting of files like 'chapter_1.pdf', 'chapter_2.pdf', 'chapter_10.pdf'.
+    """
+    filename = os.path.basename(urlparse(url).path)
+    # Find all numeric sequences in the filename
+    numbers = re.findall(r'\d+', filename)
+    # Convert to integers for proper numeric sorting
+    return tuple(int(n) for n in numbers) if numbers else (float('inf'),)
+
+
+def _get_sort_key(sort_by: Optional[str], sort_key: Optional[Callable[[str], any]]) -> Optional[Callable[[str], any]]:
+    """
+    Get the appropriate sort key function based on parameters.
+
+    Args:
+        sort_by: Built-in sort strategy ('numeric', 'alpha', 'alpha_desc', 'none')
+        sort_key: Custom sort key function
+
+    Returns:
+        A sort key function or None if no sorting should be applied.
+    """
+    # Custom sort_key takes precedence
+    if sort_key is not None:
+        return sort_key
+
+    if sort_by is None or sort_by == 'none':
+        return None
+
+    if sort_by == 'numeric':
+        return _extract_numeric_key
+    elif sort_by == 'alpha':
+        return lambda url: os.path.basename(urlparse(url).path).lower()
+    elif sort_by == 'alpha_desc':
+        # For descending, we'll handle it in the sort call
+        return lambda url: os.path.basename(urlparse(url).path).lower()
+    else:
+        logging.warning(f"Unknown sort_by value: {sort_by}. Using no sorting.")
+        return None
 
 
 def set_default_user_agent(agent_string: str) -> None:
@@ -335,7 +382,9 @@ def process_pdfs(
     timeout: int = DEFAULT_TIMEOUT,
     user_agent: Optional[str] = None,
     show_progress: bool = False,
-    filter_config: Optional[FilterConfig] = None
+    filter_config: Optional[FilterConfig] = None,
+    sort_by: Optional[str] = None,
+    sort_key: Optional[Callable[[str], any]] = None
 ) -> bool:
     """
     Download and process each PDF file based on the specified mode ('separate' or 'merge').
@@ -349,6 +398,13 @@ def process_pdfs(
         user_agent: Custom User-Agent string. If None, uses the default.
         show_progress: Whether to show progress bars. Defaults to False.
         filter_config: Optional FilterConfig to filter PDFs. If None, no filtering is applied.
+        sort_by: Built-in sort strategy for merge mode: 'numeric', 'alpha', 'alpha_desc', or 'none'.
+                 'numeric' sorts by numbers in filename (e.g., chapter_1, chapter_2, chapter_10).
+                 'alpha' sorts alphabetically by filename.
+                 'alpha_desc' sorts alphabetically descending.
+                 Defaults to None (no sorting, preserves discovery order).
+        sort_key: Custom sort key function that takes a URL and returns a sortable value.
+                  Takes precedence over sort_by if both are provided.
 
     Returns:
         True if at least one PDF was processed successfully, False otherwise.
@@ -371,6 +427,13 @@ def process_pdfs(
         if not pdf_links:
             logging.warning("All PDFs were filtered out.")
             return False
+
+    # Apply sorting if requested (useful for merge mode to ensure correct order)
+    resolved_sort_key = _get_sort_key(sort_by, sort_key)
+    if resolved_sort_key is not None:
+        reverse = (sort_by == 'alpha_desc')
+        pdf_links = sorted(pdf_links, key=resolved_sort_key, reverse=reverse)
+        logging.debug(f"Sorted {len(pdf_links)} PDFs using {'custom key' if sort_key else sort_by}")
 
     # Validate mode
     if mode not in ('separate', 'merge'):
@@ -465,7 +528,9 @@ def download_pdfs_from_webpage(
     user_agent: Optional[str] = None,
     dry_run: bool = False,
     show_progress: bool = False,
-    filter_config: Optional[FilterConfig] = None
+    filter_config: Optional[FilterConfig] = None,
+    sort_by: Optional[str] = None,
+    sort_key: Optional[Callable[[str], any]] = None
 ) -> Union[bool, Dict[str, Union[List[str], int]]]:
     """
     Download PDFs from a webpage and process them based on the specified mode.
@@ -484,6 +549,10 @@ def download_pdfs_from_webpage(
         dry_run: If True, find and return PDF URLs without downloading them. Defaults to False.
         show_progress: Whether to show progress bars. Defaults to False.
         filter_config: Optional FilterConfig to filter PDFs. If None, no filtering is applied.
+        sort_by: Built-in sort strategy for merge mode: 'numeric', 'alpha', 'alpha_desc', or 'none'.
+                 Defaults to None (no sorting, preserves discovery order).
+        sort_key: Custom sort key function that takes a URL and returns a sortable value.
+                  Takes precedence over sort_by if both are provided.
 
     Returns:
         If dry_run=True: A dict with {"urls": [...], "count": N}
@@ -529,5 +598,7 @@ def download_pdfs_from_webpage(
         timeout=timeout,
         user_agent=user_agent,
         show_progress=show_progress,
-        filter_config=filter_config
+        filter_config=filter_config,
+        sort_by=sort_by,
+        sort_key=sort_key
     )

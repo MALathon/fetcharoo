@@ -15,6 +15,7 @@ from fetcharoo.fetcharoo import (
     check_robots_txt,
     set_default_user_agent,
     get_default_user_agent,
+    SORT_BY_OPTIONS,
 )
 from fetcharoo.pdf_utils import merge_pdfs, save_pdf_to_file
 from fetcharoo.downloader import download_pdf
@@ -50,6 +51,8 @@ __all__ = [
     # User-Agent customization
     "set_default_user_agent",
     "get_default_user_agent",
+    # Sorting
+    "SORT_BY_OPTIONS",
     # Filtering
     "FilterConfig",
     "matches_filename_pattern",
