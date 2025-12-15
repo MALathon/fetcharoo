@@ -5,6 +5,7 @@ import pymupdf
 import requests
 import logging
 from bs4 import BeautifulSoup
+from dataclasses import dataclass, field
 from tqdm import tqdm
 from urllib.parse import urljoin, urlparse, unquote
 from urllib.robotparser import RobotFileParser
@@ -35,6 +36,31 @@ _robots_cache: Dict[str, RobotFileParser] = {}
 
 # Valid sort_by options
 SORT_BY_OPTIONS = ('none', 'numeric', 'alpha', 'alpha_desc')
+
+
+@dataclass
+class ProcessResult:
+    """
+    Result of processing PDFs, providing detailed information about the operation.
+
+    Attributes:
+        success: True if at least one PDF was processed successfully.
+        files_created: List of file paths that were created.
+        downloaded_count: Number of PDFs successfully downloaded.
+        filtered_count: Number of PDFs filtered out.
+        failed_count: Number of PDFs that failed to download.
+        errors: List of error messages encountered during processing.
+    """
+    success: bool = False
+    files_created: List[str] = field(default_factory=list)
+    downloaded_count: int = 0
+    filtered_count: int = 0
+    failed_count: int = 0
+    errors: List[str] = field(default_factory=list)
+
+    def __bool__(self) -> bool:
+        """Allow ProcessResult to be used in boolean context for backward compatibility."""
+        return self.success
 
 
 def _extract_numeric_key(url: str) -> tuple:
@@ -404,10 +430,9 @@ def process_pdfs(
     sort_by: Optional[str] = None,
     sort_key: Optional[Callable[[str], any]] = None,
     output_name: Optional[str] = None
-) -> bool:
+) -> ProcessResult:
     """
     Download and process each PDF file based on the specified mode ('separate' or 'merge').
-    Returns True if at least one PDF was processed successfully, False otherwise.
 
     Args:
         pdf_links: A list of PDF URLs to process.
@@ -428,10 +453,14 @@ def process_pdfs(
                     Defaults to 'merged.pdf' if not specified.
 
     Returns:
-        True if at least one PDF was processed successfully, False otherwise.
+        ProcessResult with detailed information about the operation.
+        The result can be used in boolean context (True if successful).
     """
+    result = ProcessResult()
+    original_count = len(pdf_links)
+
     if not pdf_links:
-        return False
+        return result
 
     # Apply filtering if filter_config is provided
     if filter_config is not None:
@@ -443,11 +472,12 @@ def process_pdfs(
                 filtered_links.append(pdf_link)
             else:
                 logging.info(f"Filtered out PDF (filename/URL): {pdf_link}")
+                result.filtered_count += 1
         pdf_links = filtered_links
 
         if not pdf_links:
             logging.warning("All PDFs were filtered out.")
-            return False
+            return result
 
     # Apply sorting if requested (useful for merge mode to ensure correct order)
     resolved_sort_key = _get_sort_key(sort_by, sort_key)
@@ -458,8 +488,10 @@ def process_pdfs(
 
     # Validate mode
     if mode not in ('separate', 'merge'):
-        logging.error(f"Invalid mode: {mode}. Must be 'separate' or 'merge'.")
-        return False
+        error_msg = f"Invalid mode: {mode}. Must be 'separate' or 'merge'."
+        logging.error(error_msg)
+        result.errors.append(error_msg)
+        return result
 
     # Sanitize and validate the write directory
     write_dir = os.path.abspath(write_dir)
@@ -477,12 +509,18 @@ def process_pdfs(
     else:
         pdf_contents = [download_pdf(pdf_link, timeout, user_agent=user_agent) for pdf_link in pdf_links]
 
-    pdf_contents_valid = [(content, link) for content, link in zip(pdf_contents, pdf_links)
-                          if content is not None and content.startswith(b'%PDF')]
+    # Separate valid and failed downloads
+    pdf_contents_valid = []
+    for content, link in zip(pdf_contents, pdf_links):
+        if content is not None and content.startswith(b'%PDF'):
+            pdf_contents_valid.append((content, link))
+        else:
+            result.failed_count += 1
+            result.errors.append(f"Failed to download or invalid PDF: {link}")
 
     if not pdf_contents_valid:
         logging.warning("No valid PDF content found.")
-        return False
+        return result
 
     # Apply size filtering if filter_config is provided
     if filter_config is not None and (filter_config.min_size is not None or filter_config.max_size is not None):
@@ -493,13 +531,15 @@ def process_pdfs(
                 size_filtered.append((content, link))
             else:
                 logging.info(f"Filtered out PDF (size: {size_bytes} bytes): {link}")
+                result.filtered_count += 1
         pdf_contents_valid = size_filtered
 
         if not pdf_contents_valid:
             logging.warning("All PDFs were filtered out by size limits.")
-            return False
+            return result
 
-    success = False
+    result.downloaded_count = len(pdf_contents_valid)
+
     try:
         if mode == 'merge':
             # Determine the output file name for the merged PDF
@@ -513,7 +553,8 @@ def process_pdfs(
             # Merge PDFs and save the merged document
             merged_pdf = merge_pdfs([content for content, _ in pdf_contents_valid])
             save_pdf_to_file(merged_pdf, output_file_path, mode='append')
-            success = True
+            result.success = True
+            result.files_created.append(output_file_path)
 
         elif mode == 'separate':
             # Save each PDF as a separate file
@@ -533,12 +574,15 @@ def process_pdfs(
                 # Create a new PDF document from the content
                 pdf_document = pymupdf.Document(stream=pdf_content, filetype="pdf")
                 save_pdf_to_file(pdf_document, output_file_path, mode='overwrite')
-                success = True
+                result.success = True
+                result.files_created.append(output_file_path)
 
     except Exception as e:
-        logging.error(f"Error processing PDFs: {e}")
+        error_msg = f"Error processing PDFs: {e}"
+        logging.error(error_msg)
+        result.errors.append(error_msg)
 
-    return success
+    return result
 
 
 def download_pdfs_from_webpage(
@@ -557,7 +601,7 @@ def download_pdfs_from_webpage(
     sort_by: Optional[str] = None,
     sort_key: Optional[Callable[[str], any]] = None,
     output_name: Optional[str] = None
-) -> Union[bool, Dict[str, Union[List[str], int]]]:
+) -> Union[ProcessResult, Dict[str, Union[List[str], int]]]:
     """
     Download PDFs from a webpage and process them based on the specified mode.
 
@@ -584,7 +628,8 @@ def download_pdfs_from_webpage(
 
     Returns:
         If dry_run=True: A dict with {"urls": [...], "count": N}
-        If dry_run=False: True if at least one PDF was processed successfully, False otherwise.
+        If dry_run=False: ProcessResult with detailed operation information.
+                         Can be used in boolean context (True if successful).
     """
     # Find PDF links from the webpage
     pdf_links = find_pdfs_from_webpage(

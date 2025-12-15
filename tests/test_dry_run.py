@@ -114,9 +114,11 @@ class TestDryRunMode(unittest.TestCase):
                 dry_run=False
             )
 
-            # Assert the result is a boolean (old behavior)
-            self.assertIsInstance(result, bool)
-            self.assertTrue(result)
+            # Assert the result is a ProcessResult that evaluates to True
+            from fetcharoo import ProcessResult
+            self.assertIsInstance(result, ProcessResult)
+            self.assertTrue(result)  # Uses __bool__ method
+            self.assertTrue(result.success)
 
             # Assert files were created
             files_in_dir = os.listdir(temp_dir)
