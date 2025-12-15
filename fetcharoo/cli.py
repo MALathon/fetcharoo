@@ -6,6 +6,7 @@ with support for recursive link following, PDF merging, and various options.
 """
 
 import argparse
+import logging
 import sys
 from typing import Optional
 
@@ -15,6 +16,41 @@ from fetcharoo.fetcharoo import (
     set_default_user_agent,
 )
 from fetcharoo.filtering import FilterConfig
+
+
+def configure_logging(quiet: int, verbose: int) -> None:
+    """
+    Configure logging level based on quiet/verbose flags.
+
+    Args:
+        quiet: Number of -q flags (0, 1, or 2+)
+        verbose: Number of -v flags (0, 1, or 2+)
+    """
+    # Get the fetcharoo logger
+    logger = logging.getLogger('fetcharoo')
+
+    # Calculate effective verbosity level
+    # Default is WARNING, -q moves toward ERROR/CRITICAL, -v moves toward INFO/DEBUG
+    verbosity = verbose - quiet
+
+    if verbosity <= -2:
+        level = logging.CRITICAL
+    elif verbosity == -1:
+        level = logging.ERROR
+    elif verbosity == 0:
+        level = logging.WARNING
+    elif verbosity == 1:
+        level = logging.INFO
+    else:  # verbosity >= 2
+        level = logging.DEBUG
+
+    # Configure handler if needed
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+        logger.addHandler(handler)
+
+    logger.setLevel(level)
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -75,6 +111,13 @@ Examples:
     )
 
     parser.add_argument(
+        '--output-name',
+        type=str,
+        metavar='FILENAME',
+        help='custom filename for merged PDF (only used with --merge)'
+    )
+
+    parser.add_argument(
         '--dry-run',
         action='store_true',
         help='list PDFs that would be downloaded without actually downloading them'
@@ -113,6 +156,32 @@ Examples:
         '--progress',
         action='store_true',
         help='show progress bars during download'
+    )
+
+    # Verbosity options
+    parser.add_argument(
+        '-q', '--quiet',
+        action='count',
+        default=0,
+        help='reduce output verbosity (use -qq for even quieter)'
+    )
+
+    parser.add_argument(
+        '-v', '--verbose',
+        action='count',
+        default=0,
+        help='increase output verbosity (use -vv for debug level)'
+    )
+
+    # Sorting options
+    parser.add_argument(
+        '--sort-by',
+        type=str,
+        choices=['none', 'numeric', 'alpha', 'alpha_desc'],
+        default=None,
+        metavar='STRATEGY',
+        help='sort PDFs before merging: numeric (by numbers in filename), alpha (alphabetical), '
+             'alpha_desc (reverse alphabetical), none (default, preserves discovery order)'
     )
 
     # Filtering options
@@ -163,6 +232,9 @@ def main(argv: Optional[list] = None) -> int:
 
     # Parse arguments
     args = parser.parse_args(argv)
+
+    # Configure logging based on verbosity flags
+    configure_logging(args.quiet, args.verbose)
 
     # Set custom user agent if provided
     if args.user_agent:
@@ -231,7 +303,9 @@ def main(argv: Optional[list] = None) -> int:
             user_agent=args.user_agent,
             dry_run=False,
             show_progress=args.progress,
-            filter_config=filter_config
+            filter_config=filter_config,
+            sort_by=args.sort_by,
+            output_name=args.output_name
         )
 
         if success:

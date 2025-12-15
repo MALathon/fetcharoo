@@ -294,8 +294,8 @@ Disallow: /private/
         self.assertIn('https://example.com/private/test2.pdf', pdf_links)
 
     @responses.activate
-    @patch('fetcharoo.fetcharoo.logging')
-    def test_robots_txt_logging(self, mock_logging):
+    @patch('fetcharoo.fetcharoo.logger')
+    def test_robots_txt_logging(self, mock_logger):
         """Test that warnings are logged when URLs are skipped due to robots.txt."""
         # Mock robots.txt that disallows all
         robots_content = """
@@ -334,9 +334,9 @@ Disallow: /
         )
 
         # Verify warning was logged
-        mock_logging.warning.assert_called()
+        mock_logger.warning.assert_called()
         # Check that the warning message contains information about robots.txt
-        warning_calls = [str(call) for call in mock_logging.warning.call_args_list]
+        warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
         robots_warning_found = any('robots.txt' in str(call).lower() for call in warning_calls)
         self.assertTrue(robots_warning_found)
 

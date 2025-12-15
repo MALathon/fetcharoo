@@ -114,9 +114,11 @@ class TestDryRunMode(unittest.TestCase):
                 dry_run=False
             )
 
-            # Assert the result is a boolean (old behavior)
-            self.assertIsInstance(result, bool)
-            self.assertTrue(result)
+            # Assert the result is a ProcessResult that evaluates to True
+            from fetcharoo import ProcessResult
+            self.assertIsInstance(result, ProcessResult)
+            self.assertTrue(result)  # Uses __bool__ method
+            self.assertTrue(result.success)
 
             # Assert files were created
             files_in_dir = os.listdir(temp_dir)
@@ -184,8 +186,8 @@ class TestDryRunMode(unittest.TestCase):
             self.assertEqual(result['urls'], [])
 
     @responses.activate
-    @patch('fetcharoo.fetcharoo.logging')
-    def test_dry_run_logs_appropriately(self, mock_logging):
+    @patch('fetcharoo.fetcharoo.logger')
+    def test_dry_run_logs_appropriately(self, mock_logger):
         """Test that dry_run mode logs what would be downloaded."""
         # Set up mock HTML with PDF links
         html_content = """
@@ -208,8 +210,8 @@ class TestDryRunMode(unittest.TestCase):
             )
 
             # Assert logging was called with dry-run messages
-            # Check that logging.info was called
-            self.assertTrue(mock_logging.info.called)
+            # Check that logger.info was called
+            self.assertTrue(mock_logger.info.called)
 
     @responses.activate
     def test_dry_run_with_recursion(self):

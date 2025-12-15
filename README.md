@@ -11,7 +11,12 @@ A Python library for downloading PDF files from webpages with support for recurs
 - Download PDF files from a specified webpage
 - Recursive crawling with configurable depth (up to 5 levels)
 - Merge downloaded PDFs into a single file or save separately
+- **Smart merge ordering**: Sort PDFs numerically, alphabetically, or with custom sort keys
+- **Automatic deduplication**: Remove duplicate PDF URLs across pages
+- **Custom output filenames**: Name your merged PDF files
+- **Rich result reporting**: Get detailed download statistics with `ProcessResult`
 - **Command-line interface** for quick downloads
+- **Quiet/verbose modes**: Control output verbosity with `-q` and `-v` flags
 - **robots.txt compliance** for ethical web crawling
 - **Custom User-Agent** support
 - **Dry-run mode** to preview downloads
@@ -64,6 +69,9 @@ fetcharoo https://example.com
 # Download with recursion and merge into one file
 fetcharoo https://example.com -d 2 -m
 
+# Merge with custom output filename and numeric sorting
+fetcharoo https://example.com -m --output-name "textbook.pdf" --sort-by numeric
+
 # List PDFs without downloading (dry run)
 fetcharoo https://example.com --dry-run
 
@@ -72,6 +80,12 @@ fetcharoo https://example.com -o my_pdfs --delay 1.0 --progress
 
 # Filter PDFs by pattern
 fetcharoo https://example.com --include "report*.pdf" --exclude "*draft*"
+
+# Quiet mode (less output) or verbose mode (more output)
+fetcharoo https://example.com -q     # Quieter
+fetcharoo https://example.com -qq    # Even quieter
+fetcharoo https://example.com -v     # More verbose
+fetcharoo https://example.com -vv    # Debug level
 ```
 
 ### CLI Options
@@ -81,12 +95,16 @@ fetcharoo https://example.com --include "report*.pdf" --exclude "*draft*"
 | `-o, --output DIR` | Output directory (default: output) |
 | `-d, --depth N` | Recursion depth (default: 0) |
 | `-m, --merge` | Merge all PDFs into a single file |
+| `--output-name FILENAME` | Custom filename for merged PDF (with `--merge`) |
+| `--sort-by STRATEGY` | Sort PDFs before merging: `numeric`, `alpha`, `alpha_desc`, `none` |
 | `--dry-run` | List PDFs without downloading |
 | `--delay SECONDS` | Delay between requests (default: 0.5) |
 | `--timeout SECONDS` | Request timeout (default: 30) |
 | `--user-agent STRING` | Custom User-Agent string |
 | `--respect-robots` | Respect robots.txt rules |
 | `--progress` | Show progress bars |
+| `-q, --quiet` | Reduce output verbosity (use `-qq` for even quieter) |
+| `-v, --verbose` | Increase output verbosity (use `-vv` for debug) |
 | `--include PATTERN` | Include PDFs matching pattern |
 | `--exclude PATTERN` | Exclude PDFs matching pattern |
 | `--min-size BYTES` | Minimum PDF size |
@@ -207,12 +225,62 @@ download_pdfs_from_webpage(
 )
 ```
 
+### Sorting and Merging
+
+```python
+from fetcharoo import download_pdfs_from_webpage
+
+# Merge chapters in numeric order (chapter_1.pdf, chapter_2.pdf, chapter_10.pdf)
+download_pdfs_from_webpage(
+    url='https://example.com/book',
+    mode='merge',
+    write_dir='output',
+    sort_by='numeric',
+    output_name='complete_book.pdf'
+)
+
+# Custom sort key function
+from fetcharoo import process_pdfs, find_pdfs_from_webpage
+
+pdf_urls = find_pdfs_from_webpage('https://example.com')
+process_pdfs(
+    pdf_urls,
+    write_dir='output',
+    mode='merge',
+    sort_key=lambda url: url.split('/')[-1]  # Sort by filename
+)
+```
+
+### Using ProcessResult
+
+```python
+from fetcharoo import download_pdfs_from_webpage
+
+# Get detailed results from download operation
+result = download_pdfs_from_webpage(
+    url='https://example.com',
+    mode='separate',
+    write_dir='output'
+)
+
+# ProcessResult provides detailed information
+print(f"Success: {result.success}")
+print(f"Downloaded: {result.downloaded_count}")
+print(f"Failed: {result.failed_count}")
+print(f"Files created: {result.files_created}")
+print(f"Errors: {result.errors}")
+
+# ProcessResult is truthy when successful
+if result:
+    print("Download completed!")
+```
+
 ### Finding PDFs Without Downloading
 
 ```python
 from fetcharoo import find_pdfs_from_webpage
 
-# Just get the list of PDF URLs
+# Just get the list of PDF URLs (deduplicated by default)
 pdf_urls = find_pdfs_from_webpage(
     url='https://example.com',
     recursion_depth=1
@@ -257,14 +325,57 @@ Main function to find and download PDFs from a webpage.
 | `dry_run` | bool | False | Preview URLs without downloading |
 | `show_progress` | bool | False | Show progress bars |
 | `filter_config` | FilterConfig | None | PDF filtering configuration |
+| `sort_by` | str | None | Sort strategy: 'numeric', 'alpha', 'alpha_desc', 'none' |
+| `sort_key` | callable | None | Custom sort key function |
+| `output_name` | str | None | Custom filename for merged PDF |
+
+**Returns:** `ProcessResult` object with download statistics, or dict in dry-run mode.
 
 ### `find_pdfs_from_webpage()`
 
 Find PDF URLs without downloading.
 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `url` | str | required | The webpage URL to search |
+| `recursion_depth` | int | 0 | How many levels of links to follow |
+| `deduplicate` | bool | True | Remove duplicate PDF URLs |
+| ... | | | (plus other parameters from above) |
+
 ### `process_pdfs()`
 
 Download and save a list of PDF URLs.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `pdf_links` | list | required | List of PDF URLs to download |
+| `write_dir` | str | required | Output directory |
+| `mode` | str | 'separate' | 'merge' or 'separate' |
+| `sort_by` | str | None | Sort strategy for merging |
+| `sort_key` | callable | None | Custom sort key function |
+| `output_name` | str | None | Custom merged filename |
+
+**Returns:** `ProcessResult` object with download statistics.
+
+### `ProcessResult`
+
+Dataclass returned by download operations:
+
+```python
+from fetcharoo import ProcessResult
+
+# Attributes:
+result.success        # bool: True if any PDFs were processed
+result.files_created  # List[str]: Paths to created files
+result.downloaded_count  # int: Number of successful downloads
+result.filtered_count    # int: Number of PDFs filtered out
+result.failed_count      # int: Number of failed downloads
+result.errors           # List[str]: Error messages
+
+# ProcessResult is truthy when successful:
+if result:
+    print("Success!")
+```
 
 ### `FilterConfig`
 

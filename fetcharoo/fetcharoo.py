@@ -5,10 +5,11 @@ import pymupdf
 import requests
 import logging
 from bs4 import BeautifulSoup
+from dataclasses import dataclass, field
 from tqdm import tqdm
 from urllib.parse import urljoin, urlparse, unquote
 from urllib.robotparser import RobotFileParser
-from typing import List, Set, Optional, Union, Dict
+from typing import List, Set, Optional, Union, Dict, Callable
 
 from fetcharoo.downloader import download_pdf
 from fetcharoo.pdf_utils import merge_pdfs, save_pdf_to_file
@@ -27,11 +28,87 @@ DEFAULT_USER_AGENT = 'fetcharoo/0.2.0 (+https://github.com/MALathon/fetcharoo)'
 # Module-level variable to track the current default user agent
 _default_user_agent = DEFAULT_USER_AGENT
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging with a dedicated logger
+logger = logging.getLogger('fetcharoo')
+# Don't add handlers by default - let users configure logging
+# Only set level if not already configured
+if not logger.handlers and not logging.root.handlers:
+    logger.setLevel(logging.WARNING)  # Quiet by default
 
 # Cache for robots.txt parsers per domain
 _robots_cache: Dict[str, RobotFileParser] = {}
+
+# Valid sort_by options
+SORT_BY_OPTIONS = ('none', 'numeric', 'alpha', 'alpha_desc')
+
+
+@dataclass
+class ProcessResult:
+    """
+    Result of processing PDFs, providing detailed information about the operation.
+
+    Attributes:
+        success: True if at least one PDF was processed successfully.
+        files_created: List of file paths that were created.
+        downloaded_count: Number of PDFs successfully downloaded.
+        filtered_count: Number of PDFs filtered out.
+        failed_count: Number of PDFs that failed to download.
+        errors: List of error messages encountered during processing.
+    """
+    success: bool = False
+    files_created: List[str] = field(default_factory=list)
+    downloaded_count: int = 0
+    filtered_count: int = 0
+    failed_count: int = 0
+    errors: List[str] = field(default_factory=list)
+
+    def __bool__(self) -> bool:
+        """Allow ProcessResult to be used in boolean context for backward compatibility."""
+        return self.success
+
+
+def _extract_numeric_key(url: str) -> tuple:
+    """
+    Extract numeric parts from a URL for sorting.
+
+    Returns a tuple of numbers found in the filename, allowing proper
+    sorting of files like 'chapter_1.pdf', 'chapter_2.pdf', 'chapter_10.pdf'.
+    """
+    filename = os.path.basename(urlparse(url).path)
+    # Find all numeric sequences in the filename
+    numbers = re.findall(r'\d+', filename)
+    # Convert to integers for proper numeric sorting
+    return tuple(int(n) for n in numbers) if numbers else (float('inf'),)
+
+
+def _get_sort_key(sort_by: Optional[str], sort_key: Optional[Callable[[str], any]]) -> Optional[Callable[[str], any]]:
+    """
+    Get the appropriate sort key function based on parameters.
+
+    Args:
+        sort_by: Built-in sort strategy ('numeric', 'alpha', 'alpha_desc', 'none')
+        sort_key: Custom sort key function
+
+    Returns:
+        A sort key function or None if no sorting should be applied.
+    """
+    # Custom sort_key takes precedence
+    if sort_key is not None:
+        return sort_key
+
+    if sort_by is None or sort_by == 'none':
+        return None
+
+    if sort_by == 'numeric':
+        return _extract_numeric_key
+    elif sort_by == 'alpha':
+        return lambda url: os.path.basename(urlparse(url).path).lower()
+    elif sort_by == 'alpha_desc':
+        # For descending, we'll handle it in the sort call
+        return lambda url: os.path.basename(urlparse(url).path).lower()
+    else:
+        logger.warning(f"Unknown sort_by value: {sort_by}. Using no sorting.")
+        return None
 
 
 def set_default_user_agent(agent_string: str) -> None:
@@ -182,7 +259,7 @@ def check_robots_txt(url: str, user_agent: str = 'fetcharoo-bot') -> bool:
                     rp.parse(robots_content)
                 else:
                     # If robots.txt doesn't exist (404 or other error), allow everything
-                    logging.debug(f"robots.txt returned status {response.status_code} for {domain}")
+                    logger.debug(f"robots.txt returned status {response.status_code} for {domain}")
                     rp.parse([])
 
                 # Cache the parser
@@ -190,7 +267,7 @@ def check_robots_txt(url: str, user_agent: str = 'fetcharoo-bot') -> bool:
 
             except requests.exceptions.RequestException as e:
                 # If we can't fetch robots.txt, assume it's allowed (permissive default)
-                logging.debug(f"Could not fetch robots.txt for {domain}: {e}")
+                logger.debug(f"Could not fetch robots.txt for {domain}: {e}")
                 # Cache a permissive parser
                 rp = RobotFileParser()
                 rp.set_url(robots_url)
@@ -204,7 +281,7 @@ def check_robots_txt(url: str, user_agent: str = 'fetcharoo-bot') -> bool:
 
     except Exception as e:
         # On any error, default to allowing (permissive)
-        logging.debug(f"Error checking robots.txt for {url}: {e}")
+        logger.debug(f"Error checking robots.txt for {url}: {e}")
         return True
 
 
@@ -217,7 +294,9 @@ def find_pdfs_from_webpage(
     timeout: int = DEFAULT_TIMEOUT,
     respect_robots: bool = False,
     user_agent: Optional[str] = None,
-    show_progress: bool = False
+    show_progress: bool = False,
+    deduplicate: bool = True,
+    _seen_pdfs: Optional[Set[str]] = None
 ) -> List[str]:
     """
     Find and return a list of PDF URLs from a webpage up to a specified recursion depth.
@@ -233,17 +312,24 @@ def find_pdfs_from_webpage(
         respect_robots: Whether to respect robots.txt rules. Defaults to False.
         user_agent: Custom User-Agent string. If None, uses the default.
         show_progress: Whether to show progress bars. Defaults to False.
+        deduplicate: Whether to remove duplicate PDF URLs. Defaults to True.
+                    When True, each unique PDF URL appears only once in the result.
+        _seen_pdfs: Internal parameter for tracking seen PDFs during recursion.
 
     Returns:
-        A list of PDF URLs found on the webpage.
+        A list of PDF URLs found on the webpage (deduplicated by default).
     """
     # Safety limit on recursion depth
     if recursion_depth > MAX_RECURSION_DEPTH:
-        logging.warning(f"Recursion depth {recursion_depth} exceeds maximum {MAX_RECURSION_DEPTH}, limiting.")
+        logger.warning(f"Recursion depth {recursion_depth} exceeds maximum {MAX_RECURSION_DEPTH}, limiting.")
         recursion_depth = MAX_RECURSION_DEPTH
 
     if visited is None:
         visited = set()
+
+    # Initialize seen PDFs set for deduplication
+    if deduplicate and _seen_pdfs is None:
+        _seen_pdfs = set()
 
     # Initialize allowed domains from the base URL if not provided
     if allowed_domains is None:
@@ -258,17 +344,17 @@ def find_pdfs_from_webpage(
     visited.add(url)
     pdf_links = []
 
-    # Log progress if enabled
+    # Log progress if enabled (debug level to reduce noise)
     if show_progress:
-        logging.info(f"Finding PDFs from: {url}")
+        logger.debug(f"Finding PDFs from: {url}")
 
     try:
         if not is_valid_url(url):
-            logging.error(f"Invalid URL: {url}")
+            logger.error(f"Invalid URL: {url}")
             return pdf_links
 
         if not is_safe_domain(url, allowed_domains):
-            logging.warning(f"URL domain not in allowed list: {url}")
+            logger.warning(f"URL domain not in allowed list: {url}")
             return pdf_links
 
         # Fetch the webpage content with timeout
@@ -293,11 +379,18 @@ def find_pdfs_from_webpage(
             if link.lower().endswith('.pdf'):
                 # Check robots.txt compliance if enabled
                 if respect_robots and not check_robots_txt(link, user_agent):
-                    logging.warning(f"URL disallowed by robots.txt: {link}")
+                    logger.warning(f"URL disallowed by robots.txt: {link}")
                     continue
 
-                if link not in pdf_links:  # Avoid duplicates
+                # Deduplicate: check both local list and global seen set
+                is_duplicate = link in pdf_links
+                if deduplicate and _seen_pdfs is not None:
+                    is_duplicate = is_duplicate or link in _seen_pdfs
+
+                if not is_duplicate:
                     pdf_links.append(link)
+                    if deduplicate and _seen_pdfs is not None:
+                        _seen_pdfs.add(link)
             elif recursion_depth > 0:
                 if is_safe_domain(link, allowed_domains):
                     other_links.append(link)
@@ -317,13 +410,15 @@ def find_pdfs_from_webpage(
                         timeout,
                         respect_robots,
                         user_agent,
-                        show_progress
+                        show_progress,
+                        deduplicate,
+                        _seen_pdfs
                     ))
 
     except requests.exceptions.Timeout:
-        logging.error(f"Request timed out: {url}")
+        logger.error(f"Request timed out: {url}")
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error fetching webpage: {e}")
+        logger.error(f"Error fetching webpage: {e}")
 
     return pdf_links
 
@@ -335,11 +430,13 @@ def process_pdfs(
     timeout: int = DEFAULT_TIMEOUT,
     user_agent: Optional[str] = None,
     show_progress: bool = False,
-    filter_config: Optional[FilterConfig] = None
-) -> bool:
+    filter_config: Optional[FilterConfig] = None,
+    sort_by: Optional[str] = None,
+    sort_key: Optional[Callable[[str], any]] = None,
+    output_name: Optional[str] = None
+) -> ProcessResult:
     """
     Download and process each PDF file based on the specified mode ('separate' or 'merge').
-    Returns True if at least one PDF was processed successfully, False otherwise.
 
     Args:
         pdf_links: A list of PDF URLs to process.
@@ -349,12 +446,25 @@ def process_pdfs(
         user_agent: Custom User-Agent string. If None, uses the default.
         show_progress: Whether to show progress bars. Defaults to False.
         filter_config: Optional FilterConfig to filter PDFs. If None, no filtering is applied.
+        sort_by: Built-in sort strategy for merge mode: 'numeric', 'alpha', 'alpha_desc', or 'none'.
+                 'numeric' sorts by numbers in filename (e.g., chapter_1, chapter_2, chapter_10).
+                 'alpha' sorts alphabetically by filename.
+                 'alpha_desc' sorts alphabetically descending.
+                 Defaults to None (no sorting, preserves discovery order).
+        sort_key: Custom sort key function that takes a URL and returns a sortable value.
+                  Takes precedence over sort_by if both are provided.
+        output_name: Custom filename for merged PDF output. Only used in 'merge' mode.
+                    Defaults to 'merged.pdf' if not specified.
 
     Returns:
-        True if at least one PDF was processed successfully, False otherwise.
+        ProcessResult with detailed information about the operation.
+        The result can be used in boolean context (True if successful).
     """
+    result = ProcessResult()
+    original_count = len(pdf_links)
+
     if not pdf_links:
-        return False
+        return result
 
     # Apply filtering if filter_config is provided
     if filter_config is not None:
@@ -365,17 +475,27 @@ def process_pdfs(
             if should_download_pdf(pdf_link, size_bytes=None, filter_config=filter_config):
                 filtered_links.append(pdf_link)
             else:
-                logging.info(f"Filtered out PDF (filename/URL): {pdf_link}")
+                logger.info(f"Filtered out PDF (filename/URL): {pdf_link}")
+                result.filtered_count += 1
         pdf_links = filtered_links
 
         if not pdf_links:
-            logging.warning("All PDFs were filtered out.")
-            return False
+            logger.warning("All PDFs were filtered out.")
+            return result
+
+    # Apply sorting if requested (useful for merge mode to ensure correct order)
+    resolved_sort_key = _get_sort_key(sort_by, sort_key)
+    if resolved_sort_key is not None:
+        reverse = (sort_by == 'alpha_desc')
+        pdf_links = sorted(pdf_links, key=resolved_sort_key, reverse=reverse)
+        logger.debug(f"Sorted {len(pdf_links)} PDFs using {'custom key' if sort_key else sort_by}")
 
     # Validate mode
     if mode not in ('separate', 'merge'):
-        logging.error(f"Invalid mode: {mode}. Must be 'separate' or 'merge'.")
-        return False
+        error_msg = f"Invalid mode: {mode}. Must be 'separate' or 'merge'."
+        logger.error(error_msg)
+        result.errors.append(error_msg)
+        return result
 
     # Sanitize and validate the write directory
     write_dir = os.path.abspath(write_dir)
@@ -393,12 +513,18 @@ def process_pdfs(
     else:
         pdf_contents = [download_pdf(pdf_link, timeout, user_agent=user_agent) for pdf_link in pdf_links]
 
-    pdf_contents_valid = [(content, link) for content, link in zip(pdf_contents, pdf_links)
-                          if content is not None and content.startswith(b'%PDF')]
+    # Separate valid and failed downloads
+    pdf_contents_valid = []
+    for content, link in zip(pdf_contents, pdf_links):
+        if content is not None and content.startswith(b'%PDF'):
+            pdf_contents_valid.append((content, link))
+        else:
+            result.failed_count += 1
+            result.errors.append(f"Failed to download or invalid PDF: {link}")
 
     if not pdf_contents_valid:
-        logging.warning("No valid PDF content found.")
-        return False
+        logger.warning("No valid PDF content found.")
+        return result
 
     # Apply size filtering if filter_config is provided
     if filter_config is not None and (filter_config.min_size is not None or filter_config.max_size is not None):
@@ -408,24 +534,31 @@ def process_pdfs(
             if should_download_pdf(link, size_bytes=size_bytes, filter_config=filter_config):
                 size_filtered.append((content, link))
             else:
-                logging.info(f"Filtered out PDF (size: {size_bytes} bytes): {link}")
+                logger.info(f"Filtered out PDF (size: {size_bytes} bytes): {link}")
+                result.filtered_count += 1
         pdf_contents_valid = size_filtered
 
         if not pdf_contents_valid:
-            logging.warning("All PDFs were filtered out by size limits.")
-            return False
+            logger.warning("All PDFs were filtered out by size limits.")
+            return result
 
-    success = False
+    result.downloaded_count = len(pdf_contents_valid)
+
     try:
         if mode == 'merge':
             # Determine the output file name for the merged PDF
-            file_name = 'merged.pdf'
+            if output_name:
+                # Sanitize custom filename and ensure .pdf extension
+                file_name = sanitize_filename(output_name)
+            else:
+                file_name = 'merged.pdf'
             output_file_path = os.path.join(write_dir, file_name)
 
             # Merge PDFs and save the merged document
             merged_pdf = merge_pdfs([content for content, _ in pdf_contents_valid])
             save_pdf_to_file(merged_pdf, output_file_path, mode='append')
-            success = True
+            result.success = True
+            result.files_created.append(output_file_path)
 
         elif mode == 'separate':
             # Save each PDF as a separate file
@@ -445,12 +578,15 @@ def process_pdfs(
                 # Create a new PDF document from the content
                 pdf_document = pymupdf.Document(stream=pdf_content, filetype="pdf")
                 save_pdf_to_file(pdf_document, output_file_path, mode='overwrite')
-                success = True
+                result.success = True
+                result.files_created.append(output_file_path)
 
     except Exception as e:
-        logging.error(f"Error processing PDFs: {e}")
+        error_msg = f"Error processing PDFs: {e}"
+        logger.error(error_msg)
+        result.errors.append(error_msg)
 
-    return success
+    return result
 
 
 def download_pdfs_from_webpage(
@@ -465,8 +601,11 @@ def download_pdfs_from_webpage(
     user_agent: Optional[str] = None,
     dry_run: bool = False,
     show_progress: bool = False,
-    filter_config: Optional[FilterConfig] = None
-) -> Union[bool, Dict[str, Union[List[str], int]]]:
+    filter_config: Optional[FilterConfig] = None,
+    sort_by: Optional[str] = None,
+    sort_key: Optional[Callable[[str], any]] = None,
+    output_name: Optional[str] = None
+) -> Union[ProcessResult, Dict[str, Union[List[str], int]]]:
     """
     Download PDFs from a webpage and process them based on the specified mode.
 
@@ -484,10 +623,17 @@ def download_pdfs_from_webpage(
         dry_run: If True, find and return PDF URLs without downloading them. Defaults to False.
         show_progress: Whether to show progress bars. Defaults to False.
         filter_config: Optional FilterConfig to filter PDFs. If None, no filtering is applied.
+        sort_by: Built-in sort strategy for merge mode: 'numeric', 'alpha', 'alpha_desc', or 'none'.
+                 Defaults to None (no sorting, preserves discovery order).
+        sort_key: Custom sort key function that takes a URL and returns a sortable value.
+                  Takes precedence over sort_by if both are provided.
+        output_name: Custom filename for merged PDF output. Only used in 'merge' mode.
+                    Defaults to 'merged.pdf' if not specified.
 
     Returns:
         If dry_run=True: A dict with {"urls": [...], "count": N}
-        If dry_run=False: True if at least one PDF was processed successfully, False otherwise.
+        If dry_run=False: ProcessResult with detailed operation information.
+                         Can be used in boolean context (True if successful).
     """
     # Find PDF links from the webpage
     pdf_links = find_pdfs_from_webpage(
@@ -510,12 +656,12 @@ def download_pdfs_from_webpage(
                 if should_download_pdf(pdf_link, size_bytes=None, filter_config=filter_config):
                     filtered_links.append(pdf_link)
                 else:
-                    logging.info(f"DRY RUN: Filtered out PDF: {pdf_link}")
+                    logger.info(f"DRY RUN: Filtered out PDF: {pdf_link}")
             pdf_links = filtered_links
 
-        logging.info(f"DRY RUN: Found {len(pdf_links)} PDF(s) that would be downloaded:")
+        logger.info(f"DRY RUN: Found {len(pdf_links)} PDF(s) that would be downloaded:")
         for pdf_url in pdf_links:
-            logging.info(f"  - {pdf_url}")
+            logger.info(f"  - {pdf_url}")
         return {
             "urls": pdf_links,
             "count": len(pdf_links)
@@ -529,5 +675,8 @@ def download_pdfs_from_webpage(
         timeout=timeout,
         user_agent=user_agent,
         show_progress=show_progress,
-        filter_config=filter_config
+        filter_config=filter_config,
+        sort_by=sort_by,
+        sort_key=sort_key,
+        output_name=output_name
     )
