@@ -4,26 +4,69 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A Python library for downloading PDF files from webpages with support for recursive link following, PDF merging, and security hardening.
+A Python library for discovering, downloading, and tracking PDF documents from websites — with persistent state, change monitoring, and AI agent integration.
+
+## What fetcharoo does
+
+**Download PDFs** from websites with recursive crawling, filtering, merging, and concurrent downloads.
+
+**Track documents over time** with a persistent SQLite catalog that remembers every PDF it has ever seen — content hashes, metadata, first/last seen dates.
+
+**Detect changes** by diffing the current state of a site against the catalog. Know instantly what's new, changed, or removed.
+
+**Integrate with AI agents** via an MCP server that exposes document discovery and tracking as tools for Claude and other AI systems.
 
 ## Features
 
-- Download PDF files from a specified webpage
-- Recursive crawling with configurable depth (up to 5 levels)
-- Merge downloaded PDFs into a single file or save separately
-- **Smart merge ordering**: Sort PDFs numerically, alphabetically, or with custom sort keys
-- **Automatic deduplication**: Remove duplicate PDF URLs across pages
-- **Custom output filenames**: Name your merged PDF files
-- **Rich result reporting**: Get detailed download statistics with `ProcessResult`
-- **Command-line interface** for quick downloads
-- **Quiet/verbose modes**: Control output verbosity with `-q` and `-v` flags
-- **robots.txt compliance** for ethical web crawling
-- **Custom User-Agent** support
-- **Dry-run mode** to preview downloads
-- **Progress bars** with tqdm integration
-- **PDF filtering** by filename, URL patterns, and size
-- **Security hardening**: Domain restriction, path traversal protection, rate limiting
-- Configurable timeouts and request delays
+### Core
+- Download PDFs from webpages with recursive crawling (up to 5 levels)
+- Merge PDFs into a single file or save separately
+- Smart merge ordering (numeric, alphabetical, custom sort keys)
+- Automatic URL deduplication across pages
+- PDF filtering by filename pattern, URL pattern, and file size
+- Dry-run mode to preview before downloading
+- Progress bars with tqdm
+- Configurable timeouts, rate limiting, and request delays
+
+### Concurrent Downloads
+- Parallel downloading with configurable thread pool
+- Thread-safe rate limiting shared across workers
+- 3-5x speedup on bulk downloads
+
+### Persistent Document Catalog
+- SQLite-backed tracking of every document across runs
+- Content-hash-based change detection (SHA-256)
+- Cross-URL deduplication (same PDF at different URLs)
+- PDF metadata extraction (title, author, page count, creation date)
+- Run history with diff summaries
+- Export as JSON or CSV
+- Search by URL or filename
+
+### Watch Mode
+- **One-shot diff** (`fetcharoo diff`) — cron-friendly, compare current state against catalog
+- **Continuous watch** (`fetcharoo watch`) — poll at intervals, notify on changes
+- Notifications: stdout, JSON, webhook (POST), shell command
+- Git-like diff output: `+` new, `~` changed, `-` removed
+
+### MCP Server
+- Expose fetcharoo as an MCP server for AI agent integration
+- Tools: `discover_pdfs`, `download_pdfs`, `catalog_query`, `catalog_diff`, `catalog_search`, `get_document_metadata`, `find_duplicate_documents`
+- Stateful: AI agents get persistent memory of document history
+- Optional dependency — install with `pip install fetcharoo[mcp]`
+
+### Site Schemas
+- Pre-built configurations for common document repositories
+- Auto-detection: `--schema auto` matches URL to optimal settings
+- Built-in schemas: arXiv, IETF RFCs, SEC EDGAR, W3C, Federal Register
+- Each schema provides: URL patterns, filtering rules, rate limits, sort strategy
+
+### Security
+- Domain restriction for recursive crawling (SSRF protection)
+- Path traversal protection on filenames
+- Rate limiting between requests
+- URL validation (http/https only)
+- robots.txt compliance (optional)
+- Custom User-Agent support
 
 ## Requirements
 
@@ -32,22 +75,11 @@ A Python library for downloading PDF files from webpages with support for recurs
 
 ## Installation
 
-### Using pip
-
 ```sh
 pip install fetcharoo
-```
 
-### From GitHub (latest)
-
-```sh
-pip install git+https://github.com/MALathon/fetcharoo.git
-```
-
-### Using Poetry
-
-```sh
-poetry add fetcharoo
+# With MCP server support:
+pip install fetcharoo[mcp]
 ```
 
 ### From source
@@ -60,360 +92,265 @@ poetry install
 
 ## Command-Line Interface
 
-fetcharoo includes a CLI for quick PDF downloads:
+### Download PDFs
 
 ```sh
 # Download PDFs from a webpage
 fetcharoo https://example.com
 
-# Download with recursion and merge into one file
+# Recursive crawl + merge into one file
 fetcharoo https://example.com -d 2 -m
 
-# Merge with custom output filename and numeric sorting
-fetcharoo https://example.com -m --output-name "textbook.pdf" --sort-by numeric
+# Parallel download with 10 workers
+fetcharoo https://example.com --concurrent --max-workers 10
 
-# List PDFs without downloading (dry run)
-fetcharoo https://example.com --dry-run
+# Merge with numeric sorting and custom filename
+fetcharoo https://example.com -m --sort-by numeric --output-name "textbook.pdf"
 
-# Download with custom options
-fetcharoo https://example.com -o my_pdfs --delay 1.0 --progress
-
-# Filter PDFs by pattern
+# Filter by filename pattern
 fetcharoo https://example.com --include "report*.pdf" --exclude "*draft*"
 
-# Quiet mode (less output) or verbose mode (more output)
-fetcharoo https://example.com -q     # Quieter
-fetcharoo https://example.com -qq    # Even quieter
-fetcharoo https://example.com -v     # More verbose
-fetcharoo https://example.com -vv    # Debug level
+# Dry run (list PDFs without downloading)
+fetcharoo https://example.com --dry-run
+
+# Use auto-detected site schema
+fetcharoo https://arxiv.org/abs/2301.00001 --schema auto
+
+# Track downloads in the persistent catalog
+fetcharoo https://example.com --catalog
 ```
 
-### CLI Options
+### Monitor for Changes
+
+```sh
+# One-shot diff: what's new since last check? (great for cron)
+fetcharoo diff https://example.com
+
+# Continuous watch: check every hour
+fetcharoo watch https://example.com --interval 3600
+
+# Watch with webhook notification
+fetcharoo watch https://example.com --notify webhook --webhook https://hooks.example.com/notify
+
+# Watch with shell command on change
+fetcharoo watch https://example.com --notify command --on-command "echo 'New docs found!'"
+
+# JSON output for piping
+fetcharoo diff https://example.com --format json
+```
+
+### Manage the Catalog
+
+```sh
+# Show all tracked documents
+fetcharoo catalog show
+
+# Export as JSON or CSV
+fetcharoo catalog export --format json
+fetcharoo catalog export --format csv
+
+# Search documents
+fetcharoo catalog search "annual report"
+
+# View run history
+fetcharoo catalog runs
+
+# Find duplicate documents (same content, different URLs)
+fetcharoo catalog duplicates
+```
+
+### Site Schemas
+
+```sh
+# List available schemas
+fetcharoo schemas list
+
+# Check which schema matches a URL
+fetcharoo schemas match https://arxiv.org/abs/2301.00001
+```
+
+### MCP Server
+
+```sh
+# Start the MCP server (for AI agent integration)
+fetcharoo mcp serve
+```
+
+### All Download Options
 
 | Option | Description |
 |--------|-------------|
 | `-o, --output DIR` | Output directory (default: output) |
 | `-d, --depth N` | Recursion depth (default: 0) |
 | `-m, --merge` | Merge all PDFs into a single file |
-| `--output-name FILENAME` | Custom filename for merged PDF (with `--merge`) |
-| `--sort-by STRATEGY` | Sort PDFs before merging: `numeric`, `alpha`, `alpha_desc`, `none` |
+| `--output-name FILENAME` | Custom filename for merged PDF |
+| `--sort-by STRATEGY` | Sort: `numeric`, `alpha`, `alpha_desc`, `none` |
 | `--dry-run` | List PDFs without downloading |
+| `--concurrent` | Download in parallel |
+| `--max-workers N` | Max parallel threads (default: 5) |
+| `--catalog` | Track in persistent catalog |
+| `--catalog-db PATH` | Custom catalog database path |
+| `--schema NAME` | Use site schema (`auto` for auto-detect) |
 | `--delay SECONDS` | Delay between requests (default: 0.5) |
 | `--timeout SECONDS` | Request timeout (default: 30) |
-| `--user-agent STRING` | Custom User-Agent string |
-| `--respect-robots` | Respect robots.txt rules |
+| `--user-agent STRING` | Custom User-Agent |
+| `--respect-robots` | Respect robots.txt |
 | `--progress` | Show progress bars |
-| `-q, --quiet` | Reduce output verbosity (use `-qq` for even quieter) |
-| `-v, --verbose` | Increase output verbosity (use `-vv` for debug) |
-| `--include PATTERN` | Include PDFs matching pattern |
-| `--exclude PATTERN` | Exclude PDFs matching pattern |
+| `-q, --quiet` | Less output (`-qq` for even quieter) |
+| `-v, --verbose` | More output (`-vv` for debug) |
+| `--include PATTERN` | Include filename pattern |
+| `--exclude PATTERN` | Exclude filename pattern |
 | `--min-size BYTES` | Minimum PDF size |
 | `--max-size BYTES` | Maximum PDF size |
 
-## Quick Start
+## Python API
+
+### Quick Start
 
 ```python
 from fetcharoo import download_pdfs_from_webpage
 
-# Download PDFs from a webpage and merge them into a single file
+# Download PDFs — simple
+download_pdfs_from_webpage('https://example.com', write_dir='output')
+
+# Download with concurrent workers
 download_pdfs_from_webpage(
-    url='https://example.com',
-    recursion_depth=1,
-    mode='merge',
-    write_dir='output'
-)
-```
-
-## Usage
-
-### Basic Usage
-
-```python
-from fetcharoo import download_pdfs_from_webpage
-
-# Download and save PDFs as separate files
-download_pdfs_from_webpage(
-    url='https://example.com/documents',
-    recursion_depth=0,  # Only search the specified page
-    mode='separate',
-    write_dir='downloads'
-)
-```
-
-### With robots.txt Compliance
-
-```python
-from fetcharoo import download_pdfs_from_webpage
-
-# Respect robots.txt rules
-download_pdfs_from_webpage(
-    url='https://example.com',
+    'https://example.com',
     recursion_depth=2,
     mode='merge',
-    write_dir='output',
-    respect_robots=True,
-    user_agent='MyBot/1.0'
+    concurrent=True,
+    max_workers=10,
+    show_progress=True,
 )
 ```
 
-### Dry-Run Mode
+### Document Catalog
 
 ```python
-from fetcharoo import download_pdfs_from_webpage
+from fetcharoo import DocumentCatalog
 
-# Preview what would be downloaded
-result = download_pdfs_from_webpage(
-    url='https://example.com',
-    recursion_depth=1,
-    dry_run=True
+catalog = DocumentCatalog()  # defaults to ~/.fetcharoo/catalog.db
+
+# Track a document
+catalog.upsert_document(
+    'https://example.com/report.pdf',
+    content=pdf_bytes,
+    source_page='https://example.com',
+    filename='report.pdf',
 )
 
-print(f"Found {result['count']} PDFs:")
-for url in result['urls']:
-    print(f"  - {url}")
+# Search
+results = catalog.search('annual report')
+
+# Find duplicates (same content at different URLs)
+dupes = catalog.find_duplicates()
+
+# Diff against current state
+diff = catalog.diff(['https://example.com/a.pdf', 'https://example.com/b.pdf'])
+print(f"New: {len(diff.new)}, Removed: {len(diff.removed)}")
+
+# Export
+print(catalog.export_json())
+print(catalog.export_csv())
 ```
 
-### With Progress Bars
+### Watch Mode
 
 ```python
-from fetcharoo import download_pdfs_from_webpage
+from fetcharoo import DocumentCatalog, DocumentWatcher
 
-# Show progress during download
-download_pdfs_from_webpage(
-    url='https://example.com',
-    recursion_depth=2,
-    write_dir='output',
-    show_progress=True
-)
+catalog = DocumentCatalog()
+watcher = DocumentWatcher('https://example.com', catalog, recursion_depth=1)
+
+# One-shot check
+diff = watcher.check_once()
+for doc in diff.new:
+    print(f"New: {doc.url}")
+
+# Or use the convenience function
+from fetcharoo import diff_once
+diff = diff_once('https://example.com', catalog)
 ```
 
-### PDF Filtering
+### Site Schemas
+
+```python
+from fetcharoo import find_schema, list_schemas
+
+# Auto-detect schema for a URL
+schema = find_schema('https://arxiv.org/abs/2301.00001')
+print(schema.name)           # 'arxiv'
+print(schema.request_delay)  # 1.0 (arXiv rate-limits)
+
+# List all available schemas
+for s in list_schemas():
+    print(f"{s.name}: {s.description}")
+```
+
+### Filtering
 
 ```python
 from fetcharoo import download_pdfs_from_webpage, FilterConfig
 
-# Filter by filename patterns and size
 filter_config = FilterConfig(
     filename_include=['report*.pdf', 'annual*.pdf'],
     filename_exclude=['*draft*', '*temp*'],
-    min_size=10000,  # 10KB minimum
-    max_size=50000000  # 50MB maximum
+    url_include=['*/reports/*'],
+    url_exclude=['*/archive/*'],
+    min_size=10_000,      # 10KB minimum
+    max_size=50_000_000,  # 50MB maximum
 )
 
 download_pdfs_from_webpage(
-    url='https://example.com',
-    recursion_depth=1,
-    write_dir='output',
-    filter_config=filter_config
+    'https://example.com',
+    filter_config=filter_config,
 )
 ```
 
-### With Security Options
+### ProcessResult
 
 ```python
 from fetcharoo import download_pdfs_from_webpage
 
-# Restrict crawling to specific domains
-download_pdfs_from_webpage(
-    url='https://example.com',
-    recursion_depth=2,
-    mode='merge',
-    write_dir='output',
-    allowed_domains={'example.com', 'docs.example.com'},
-    request_delay=1.0,  # 1 second between requests
-    timeout=60  # 60 second timeout
-)
+result = download_pdfs_from_webpage('https://example.com')
+
+print(result.success)          # bool
+print(result.downloaded_count) # int
+print(result.failed_count)     # int
+print(result.filtered_count)   # int
+print(result.files_created)    # List[str]
+print(result.errors)           # List[str]
+
+if result:  # truthy when successful
+    print("Done!")
 ```
 
-### Sorting and Merging
+## MCP Server Configuration
 
-```python
-from fetcharoo import download_pdfs_from_webpage
+Add fetcharoo to your Claude Code or MCP client configuration:
 
-# Merge chapters in numeric order (chapter_1.pdf, chapter_2.pdf, chapter_10.pdf)
-download_pdfs_from_webpage(
-    url='https://example.com/book',
-    mode='merge',
-    write_dir='output',
-    sort_by='numeric',
-    output_name='complete_book.pdf'
-)
-
-# Custom sort key function
-from fetcharoo import process_pdfs, find_pdfs_from_webpage
-
-pdf_urls = find_pdfs_from_webpage('https://example.com')
-process_pdfs(
-    pdf_urls,
-    write_dir='output',
-    mode='merge',
-    sort_key=lambda url: url.split('/')[-1]  # Sort by filename
-)
+```json
+{
+  "mcpServers": {
+    "fetcharoo": {
+      "command": "fetcharoo",
+      "args": ["mcp", "serve"]
+    }
+  }
+}
 ```
 
-### Using ProcessResult
+Once connected, AI agents can use these tools:
 
-```python
-from fetcharoo import download_pdfs_from_webpage
-
-# Get detailed results from download operation
-result = download_pdfs_from_webpage(
-    url='https://example.com',
-    mode='separate',
-    write_dir='output'
-)
-
-# ProcessResult provides detailed information
-print(f"Success: {result.success}")
-print(f"Downloaded: {result.downloaded_count}")
-print(f"Failed: {result.failed_count}")
-print(f"Files created: {result.files_created}")
-print(f"Errors: {result.errors}")
-
-# ProcessResult is truthy when successful
-if result:
-    print("Download completed!")
-```
-
-### Finding PDFs Without Downloading
-
-```python
-from fetcharoo import find_pdfs_from_webpage
-
-# Just get the list of PDF URLs (deduplicated by default)
-pdf_urls = find_pdfs_from_webpage(
-    url='https://example.com',
-    recursion_depth=1
-)
-
-for url in pdf_urls:
-    print(url)
-```
-
-### Custom User-Agent
-
-```python
-from fetcharoo import download_pdfs_from_webpage, set_default_user_agent
-
-# Set a global default User-Agent
-set_default_user_agent('MyCompanyBot/1.0 (contact@example.com)')
-
-# Or use per-request User-Agent
-download_pdfs_from_webpage(
-    url='https://example.com',
-    user_agent='SpecificBot/2.0'
-)
-```
-
-## API Reference
-
-### `download_pdfs_from_webpage()`
-
-Main function to find and download PDFs from a webpage.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `url` | str | required | The webpage URL to search |
-| `recursion_depth` | int | 0 | How many levels of links to follow (max 5) |
-| `mode` | str | 'separate' | 'merge' or 'separate' |
-| `write_dir` | str | 'output' | Output directory for PDFs |
-| `allowed_domains` | set | None | Restrict crawling to these domains |
-| `request_delay` | float | 0.5 | Seconds between requests |
-| `timeout` | int | 30 | Request timeout in seconds |
-| `respect_robots` | bool | False | Whether to respect robots.txt |
-| `user_agent` | str | None | Custom User-Agent (uses default if None) |
-| `dry_run` | bool | False | Preview URLs without downloading |
-| `show_progress` | bool | False | Show progress bars |
-| `filter_config` | FilterConfig | None | PDF filtering configuration |
-| `sort_by` | str | None | Sort strategy: 'numeric', 'alpha', 'alpha_desc', 'none' |
-| `sort_key` | callable | None | Custom sort key function |
-| `output_name` | str | None | Custom filename for merged PDF |
-
-**Returns:** `ProcessResult` object with download statistics, or dict in dry-run mode.
-
-### `find_pdfs_from_webpage()`
-
-Find PDF URLs without downloading.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `url` | str | required | The webpage URL to search |
-| `recursion_depth` | int | 0 | How many levels of links to follow |
-| `deduplicate` | bool | True | Remove duplicate PDF URLs |
-| ... | | | (plus other parameters from above) |
-
-### `process_pdfs()`
-
-Download and save a list of PDF URLs.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `pdf_links` | list | required | List of PDF URLs to download |
-| `write_dir` | str | required | Output directory |
-| `mode` | str | 'separate' | 'merge' or 'separate' |
-| `sort_by` | str | None | Sort strategy for merging |
-| `sort_key` | callable | None | Custom sort key function |
-| `output_name` | str | None | Custom merged filename |
-
-**Returns:** `ProcessResult` object with download statistics.
-
-### `ProcessResult`
-
-Dataclass returned by download operations:
-
-```python
-from fetcharoo import ProcessResult
-
-# Attributes:
-result.success        # bool: True if any PDFs were processed
-result.files_created  # List[str]: Paths to created files
-result.downloaded_count  # int: Number of successful downloads
-result.filtered_count    # int: Number of PDFs filtered out
-result.failed_count      # int: Number of failed downloads
-result.errors           # List[str]: Error messages
-
-# ProcessResult is truthy when successful:
-if result:
-    print("Success!")
-```
-
-### `FilterConfig`
-
-Configuration for PDF filtering:
-
-```python
-from fetcharoo import FilterConfig
-
-config = FilterConfig(
-    filename_include=['*.pdf'],      # Patterns to include
-    filename_exclude=['*draft*'],    # Patterns to exclude
-    url_include=['*/reports/*'],     # URL patterns to include
-    url_exclude=['*/temp/*'],        # URL patterns to exclude
-    min_size=1000,                   # Minimum size in bytes
-    max_size=100000000               # Maximum size in bytes
-)
-```
-
-### Utility Functions
-
-- `merge_pdfs()` - Merge multiple PDF documents
-- `is_valid_url()` - Validate URL format and scheme
-- `is_safe_domain()` - Check if domain is allowed
-- `sanitize_filename()` - Prevent path traversal attacks
-- `check_robots_txt()` - Check robots.txt permissions
-- `set_default_user_agent()` - Set default User-Agent
-- `get_default_user_agent()` - Get current default User-Agent
-
-## Security Features
-
-fetcharoo includes several security measures:
-
-- **Domain restriction**: Limit recursive crawling to specified domains (SSRF protection)
-- **Path traversal protection**: Sanitizes filenames to prevent directory escape
-- **Rate limiting**: Configurable delays between requests
-- **Timeout handling**: Prevents hanging on slow servers
-- **URL validation**: Only allows http/https schemes
-- **robots.txt compliance**: Optional respect for crawling rules
+| Tool | Description |
+|------|-------------|
+| `discover_pdfs` | Find all PDFs on a URL with filtering |
+| `download_pdfs` | Download with full reliability (retry, rate limit, dedup) |
+| `catalog_query` | Query persistent document memory |
+| `catalog_diff` | What's changed since last check? |
+| `catalog_search` | Search across all tracked documents |
+| `get_document_metadata` | Detailed info about a tracked document |
+| `find_duplicate_documents` | Same content at different URLs |
 
 ## Contributing
 
