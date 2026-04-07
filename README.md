@@ -351,6 +351,107 @@ Once connected, AI agents can use these tools:
 | `catalog_search` | Search across all tracked documents |
 | `get_document_metadata` | Detailed info about a tracked document |
 | `find_duplicate_documents` | Same content at different URLs |
+| `snapshot_monitor` | Snapshot any data and diff against previous |
+| `snapshot_query` | Get current records for a monitored source |
+| `snapshot_sources` | List all monitored data sources |
+| `snapshot_search` | Search across all snapshot records |
+
+## MCP Caching Proxy
+
+fetcharoo can wrap **any** MCP server as a caching proxy — like Redis for MCP. It sits between your AI agent and the upstream server, caching tool call results and tracking changes over time.
+
+```
+AI Agent <--MCP--> fetcharoo proxy <--MCP--> upstream server
+```
+
+### Setup
+
+```sh
+# Wrap any MCP server with caching (1-hour TTL)
+fetcharoo proxy --server "npx trial-guide" --ttl 3600
+
+# Or with a Python MCP server
+fetcharoo proxy --server "python my_server.py" --ttl 1800
+```
+
+In Claude Desktop / Claude Code config:
+```json
+{
+  "mcpServers": {
+    "trial-guide-cached": {
+      "command": "fetcharoo",
+      "args": ["proxy", "--server", "npx trial-guide", "--ttl", "3600"]
+    }
+  }
+}
+```
+
+The proxy automatically adds these meta-tools:
+
+| Tool | Description |
+|------|-------------|
+| `_proxy_call` | Call any upstream tool through the cache |
+| `_cache_status` | Show all cached entries and their freshness |
+| `_cache_history` | View change history for cached calls |
+| `_cache_refresh` | Force-refresh a cached call (bypass TTL) |
+| `_cache_clear` | Clear cache entries |
+
+### Example: Clinical Trials
+
+```sh
+# Wrap a clinical trials MCP server (e.g., trial-guide)
+fetcharoo proxy --server "npx trial-guide" --ttl 7200
+
+# Now Claude can call trial-guide tools through the cache:
+# - First call: hits upstream, caches result
+# - Subsequent calls within 2 hours: served from cache
+# - Cache refresh: shows what changed since last call
+```
+
+## Snapshot Monitoring
+
+Monitor any data source for changes over time by snapshotting results and diffing.
+
+### CLI
+
+```sh
+# Snapshot an MCP tool's output and diff against previous
+fetcharoo monitor snapshot \
+    --server "npx trial-guide" \
+    --tool search_studies \
+    --params '{"query.cond": "diabetes", "filter.overallStatus": "RECRUITING"}' \
+    --record-id-field "protocolSection.identificationModule.nctId"
+
+# List all monitored sources
+fetcharoo monitor sources
+
+# View snapshot history
+fetcharoo monitor history --source "search_studies:a1b2c3d4"
+
+# Search across all snapshots
+fetcharoo monitor search "diabetes"
+```
+
+### Python API
+
+```python
+from fetcharoo import SnapshotStore, snapshot_data
+
+store = SnapshotStore()
+
+# Snapshot any list of records (from any source)
+trials = [
+    {"nctId": "NCT001", "title": "Trial A", "status": "RECRUITING"},
+    {"nctId": "NCT002", "title": "Trial B", "status": "ACTIVE"},
+]
+diff = snapshot_data(store, "diabetes-trials", trials, record_id_field="nctId")
+
+print(f"New: {len(diff.new)}")
+print(f"Changed: {len(diff.changed)}")
+print(f"Removed: {len(diff.removed)}")
+
+# Run again later with updated data — only changes are reported
+```
 
 ## Contributing
 

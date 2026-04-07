@@ -34,6 +34,7 @@ from fetcharoo.filtering import (
 from fetcharoo.catalog import DocumentCatalog, DocumentRecord, DiffResult
 from fetcharoo.watcher import DocumentWatcher, diff_once
 from fetcharoo.schemas import SiteSchema, find_schema, list_schemas
+from fetcharoo.mcp_monitor import SnapshotStore, SnapshotDiff, snapshot_data
 
 __version__ = "0.3.0"
 
@@ -81,6 +82,10 @@ __all__ = [
     "SiteSchema",
     "find_schema",
     "list_schemas",
+    # Snapshot monitoring
+    "SnapshotStore",
+    "SnapshotDiff",
+    "snapshot_data",
     # Version
     "__version__",
 ]

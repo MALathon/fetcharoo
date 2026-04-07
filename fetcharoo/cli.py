@@ -18,7 +18,7 @@ from fetcharoo.fetcharoo import (
 from fetcharoo.filtering import FilterConfig
 
 # Subcommands that the CLI recognizes
-SUBCOMMANDS = {'diff', 'watch', 'catalog', 'schemas', 'mcp'}
+SUBCOMMANDS = {'diff', 'watch', 'catalog', 'schemas', 'mcp', 'proxy', 'monitor'}
 
 
 def configure_logging(quiet: int, verbose: int) -> None:
@@ -525,6 +525,143 @@ def _handle_mcp(argv: list) -> int:
     return 0
 
 
+def _handle_proxy(argv: list) -> int:
+    """Handle the 'proxy' subcommand — MCP caching proxy."""
+    parser = argparse.ArgumentParser(
+        prog='fetcharoo proxy',
+        description='Start a caching MCP proxy that wraps any upstream MCP server.',
+    )
+    parser.add_argument('--server', type=str, required=True, help='command to start upstream MCP server (e.g., "npx trial-guide")')
+    parser.add_argument('--ttl', type=float, default=3600, help='cache TTL in seconds (default: 3600, 0=no cache)')
+    parser.add_argument('--cache-db', type=str, help='path to cache database')
+
+    args = parser.parse_args(argv)
+
+    from fetcharoo.mcp_proxy import run_proxy
+    run_proxy(args.server, ttl=args.ttl, cache_db_path=args.cache_db)
+    return 0
+
+
+def _handle_monitor(argv: list) -> int:
+    """Handle the 'monitor' subcommand — snapshot and diff MCP tool outputs."""
+    if not argv:
+        print("Usage: fetcharoo monitor {snapshot|diff|sources|history|search}")
+        return 1
+
+    action = argv[0]
+    rest = argv[1:]
+
+    if action == 'snapshot':
+        parser = argparse.ArgumentParser(prog='fetcharoo monitor snapshot')
+        parser.add_argument('--server', type=str, required=True, help='MCP server command')
+        parser.add_argument('--tool', type=str, required=True, help='tool name to call')
+        parser.add_argument('--params', type=str, default='{}', help='JSON tool params')
+        parser.add_argument('--record-id-field', type=str, default='id', help='dot-notation path to record ID')
+        parser.add_argument('--results-field', type=str, help='dot-notation path to results array')
+        parser.add_argument('--source-key', type=str, help='custom source key name')
+        parser.add_argument('--catalog-db', type=str, help='database path')
+
+        args = parser.parse_args(rest)
+        params = json.loads(args.params)
+
+        import asyncio
+        from fetcharoo.mcp_monitor import SnapshotStore, snapshot_mcp_tool
+
+        store = SnapshotStore(db_path=args.catalog_db)
+        try:
+            diff = asyncio.run(snapshot_mcp_tool(
+                store=store,
+                server_command=args.server.split(),
+                tool_name=args.tool,
+                tool_params=params,
+                record_id_field=args.record_id_field,
+                source_key=args.source_key,
+                results_field=args.results_field,
+            ))
+            print(f"Source: {diff.source_key}")
+            print(f"  {diff.summary}")
+            if diff.new:
+                for r in diff.new:
+                    print(f"  + {r.record_id}")
+            if diff.changed:
+                for r in diff.changed:
+                    print(f"  ~ {r.record_id}")
+            if diff.removed:
+                for r in diff.removed:
+                    print(f"  - {r.record_id}")
+            return 0 if diff.has_changes else 1
+        finally:
+            store.close()
+
+    elif action == 'sources':
+        from fetcharoo.mcp_monitor import SnapshotStore
+        parser = argparse.ArgumentParser(prog='fetcharoo monitor sources')
+        parser.add_argument('--catalog-db', type=str, help='database path')
+        args = parser.parse_args(rest)
+
+        store = SnapshotStore(db_path=args.catalog_db)
+        try:
+            sources = store.list_sources()
+            if not sources:
+                print("No monitored sources.")
+                return 0
+            print(f"Monitored sources ({len(sources)}):")
+            for s in sources:
+                print(f"  {s['source_key']}: {s['active_count']} active records (last: {s['last_updated']})")
+            return 0
+        finally:
+            store.close()
+
+    elif action == 'history':
+        from fetcharoo.mcp_monitor import SnapshotStore
+        parser = argparse.ArgumentParser(prog='fetcharoo monitor history')
+        parser.add_argument('--source', type=str, help='filter by source key')
+        parser.add_argument('--limit', type=int, default=20)
+        parser.add_argument('--catalog-db', type=str, help='database path')
+        args = parser.parse_args(rest)
+
+        store = SnapshotStore(db_path=args.catalog_db)
+        try:
+            history = store.get_snapshot_history(args.source, args.limit)
+            if not history:
+                print("No snapshot history.")
+                return 0
+            print(f"Snapshot history ({len(history)}):")
+            for h in history:
+                print(f"  {h['timestamp']} | {h['source_key']}")
+                print(f"    records={h['record_count']} new={h['new_count']} "
+                      f"changed={h['changed_count']} removed={h['removed_count']}")
+            return 0
+        finally:
+            store.close()
+
+    elif action == 'search':
+        from fetcharoo.mcp_monitor import SnapshotStore
+        parser = argparse.ArgumentParser(prog='fetcharoo monitor search')
+        parser.add_argument('query', type=str, help='search string')
+        parser.add_argument('--source', type=str, help='filter by source key')
+        parser.add_argument('--catalog-db', type=str, help='database path')
+        args = parser.parse_args(rest)
+
+        store = SnapshotStore(db_path=args.catalog_db)
+        try:
+            results = store.search_records(args.query, args.source)
+            if not results:
+                print(f"No records matching '{args.query}'")
+                return 1
+            print(f"Found {len(results)} record(s):")
+            for r in results:
+                print(f"  [{r['source_key']}] {r['record_id']}")
+            return 0
+        finally:
+            store.close()
+
+    else:
+        print(f"Unknown monitor action: {action}")
+        print("Usage: fetcharoo monitor {snapshot|sources|history|search}")
+        return 1
+
+
 def main(argv: Optional[list] = None) -> int:
     """
     Main entry point for the CLI.
@@ -553,6 +690,10 @@ def main(argv: Optional[list] = None) -> int:
                 return _handle_schemas(rest)
             elif command == 'mcp':
                 return _handle_mcp(rest)
+            elif command == 'proxy':
+                return _handle_proxy(rest)
+            elif command == 'monitor':
+                return _handle_monitor(rest)
         except KeyboardInterrupt:
             print("\n\nOperation cancelled by user.")
             return 1
