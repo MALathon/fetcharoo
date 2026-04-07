@@ -18,7 +18,7 @@ from fetcharoo.fetcharoo import (
 from fetcharoo.filtering import FilterConfig
 
 # Subcommands that the CLI recognizes
-SUBCOMMANDS = {'diff', 'watch', 'catalog', 'schemas', 'mcp', 'proxy', 'monitor'}
+SUBCOMMANDS = {'diff', 'watch', 'catalog', 'schemas', 'mcp', 'monitor'}
 
 
 def configure_logging(quiet: int, verbose: int) -> None:
@@ -517,28 +517,21 @@ def _handle_schemas(argv: list) -> int:
 def _handle_mcp(argv: list) -> int:
     """Handle the 'mcp' subcommand."""
     if not argv or argv[0] != 'serve':
-        print("Usage: fetcharoo mcp serve")
+        print("Usage: fetcharoo mcp serve [--upstream CMD] [--ttl SECONDS]")
         return 1
 
+    parser = argparse.ArgumentParser(prog='fetcharoo mcp serve')
+    parser.add_argument('--upstream', type=str, default=None,
+                        help='upstream MCP server command to proxy (e.g., "npx trial-guide")')
+    parser.add_argument('--ttl', type=float, default=3600,
+                        help='cache TTL for proxied calls in seconds (default: 3600)')
+    parser.add_argument('--cache-db', type=str, default=None,
+                        help='path to cache database')
+
+    args = parser.parse_args(argv[1:])  # skip 'serve'
+
     from fetcharoo.mcp_server import main as mcp_main
-    mcp_main()
-    return 0
-
-
-def _handle_proxy(argv: list) -> int:
-    """Handle the 'proxy' subcommand — MCP caching proxy."""
-    parser = argparse.ArgumentParser(
-        prog='fetcharoo proxy',
-        description='Start a caching MCP proxy that wraps any upstream MCP server.',
-    )
-    parser.add_argument('--server', type=str, required=True, help='command to start upstream MCP server (e.g., "npx trial-guide")')
-    parser.add_argument('--ttl', type=float, default=3600, help='cache TTL in seconds (default: 3600, 0=no cache)')
-    parser.add_argument('--cache-db', type=str, help='path to cache database')
-
-    args = parser.parse_args(argv)
-
-    from fetcharoo.mcp_proxy import run_proxy
-    run_proxy(args.server, ttl=args.ttl, cache_db_path=args.cache_db)
+    mcp_main(upstream=args.upstream, ttl=args.ttl, cache_db=args.cache_db)
     return 0
 
 
@@ -690,8 +683,6 @@ def main(argv: Optional[list] = None) -> int:
                 return _handle_schemas(rest)
             elif command == 'mcp':
                 return _handle_mcp(rest)
-            elif command == 'proxy':
-                return _handle_proxy(rest)
             elif command == 'monitor':
                 return _handle_monitor(rest)
         except KeyboardInterrupt:
