@@ -12,6 +12,7 @@ from urllib.robotparser import RobotFileParser
 from typing import List, Set, Optional, Union, Dict, Callable
 
 from fetcharoo.downloader import download_pdf
+from fetcharoo.async_downloader import download_pdfs_concurrent
 from fetcharoo.pdf_utils import merge_pdfs, save_pdf_to_file
 from fetcharoo.filtering import FilterConfig, should_download_pdf
 
@@ -433,7 +434,9 @@ def process_pdfs(
     filter_config: Optional[FilterConfig] = None,
     sort_by: Optional[str] = None,
     sort_key: Optional[Callable[[str], any]] = None,
-    output_name: Optional[str] = None
+    output_name: Optional[str] = None,
+    concurrent: bool = False,
+    max_workers: int = 5
 ) -> ProcessResult:
     """
     Download and process each PDF file based on the specified mode ('separate' or 'merge').
@@ -455,6 +458,8 @@ def process_pdfs(
                   Takes precedence over sort_by if both are provided.
         output_name: Custom filename for merged PDF output. Only used in 'merge' mode.
                     Defaults to 'merged.pdf' if not specified.
+        concurrent: If True, download PDFs in parallel using a thread pool. Defaults to False.
+        max_workers: Maximum number of concurrent download threads. Defaults to 5.
 
     Returns:
         ProcessResult with detailed information about the operation.
@@ -507,15 +512,32 @@ def process_pdfs(
     if user_agent is None:
         user_agent = get_default_user_agent()
 
-    # Download PDF contents with optional progress bar
-    if show_progress:
-        pdf_contents = [download_pdf(pdf_link, timeout, user_agent=user_agent) for pdf_link in tqdm(pdf_links, desc="Downloading PDFs")]
+    # Download PDF contents
+    if concurrent and len(pdf_links) > 1:
+        # Parallel downloads using thread pool
+        progress_bar = tqdm(total=len(pdf_links), desc="Downloading PDFs") if show_progress else None
+        callback = (lambda: progress_bar.update(1)) if progress_bar else None
+        download_results = download_pdfs_concurrent(
+            pdf_links,
+            max_workers=max_workers,
+            timeout=timeout,
+            user_agent=user_agent,
+            progress_callback=callback,
+        )
+        if progress_bar:
+            progress_bar.close()
+        pdf_contents_with_links = download_results
     else:
-        pdf_contents = [download_pdf(pdf_link, timeout, user_agent=user_agent) for pdf_link in pdf_links]
+        # Sequential downloads (original behavior)
+        if show_progress:
+            pdf_contents = [download_pdf(pdf_link, timeout, user_agent=user_agent) for pdf_link in tqdm(pdf_links, desc="Downloading PDFs")]
+        else:
+            pdf_contents = [download_pdf(pdf_link, timeout, user_agent=user_agent) for pdf_link in pdf_links]
+        pdf_contents_with_links = list(zip(pdf_contents, pdf_links))
 
     # Separate valid and failed downloads
     pdf_contents_valid = []
-    for content, link in zip(pdf_contents, pdf_links):
+    for content, link in pdf_contents_with_links:
         if content is not None and content.startswith(b'%PDF'):
             pdf_contents_valid.append((content, link))
         else:
@@ -604,7 +626,9 @@ def download_pdfs_from_webpage(
     filter_config: Optional[FilterConfig] = None,
     sort_by: Optional[str] = None,
     sort_key: Optional[Callable[[str], any]] = None,
-    output_name: Optional[str] = None
+    output_name: Optional[str] = None,
+    concurrent: bool = False,
+    max_workers: int = 5
 ) -> Union[ProcessResult, Dict[str, Union[List[str], int]]]:
     """
     Download PDFs from a webpage and process them based on the specified mode.
@@ -629,6 +653,8 @@ def download_pdfs_from_webpage(
                   Takes precedence over sort_by if both are provided.
         output_name: Custom filename for merged PDF output. Only used in 'merge' mode.
                     Defaults to 'merged.pdf' if not specified.
+        concurrent: If True, download PDFs in parallel. Defaults to False.
+        max_workers: Maximum concurrent download threads. Defaults to 5.
 
     Returns:
         If dry_run=True: A dict with {"urls": [...], "count": N}
@@ -678,5 +704,7 @@ def download_pdfs_from_webpage(
         filter_config=filter_config,
         sort_by=sort_by,
         sort_key=sort_key,
-        output_name=output_name
+        output_name=output_name,
+        concurrent=concurrent,
+        max_workers=max_workers,
     )
